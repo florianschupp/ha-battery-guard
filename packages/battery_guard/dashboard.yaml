@@ -1,0 +1,147 @@
+# =============================================================================
+# Battery Guard: Lovelace Dashboard
+# =============================================================================
+# This dashboard is included as a separate view in the Lovelace config.
+#
+# Prerequisite: HACS card "auto-entities" for dynamic entity lists
+#   https://github.com/thomasloven/lovelace-auto-entities
+
+type: panel
+title: Battery Guard
+icon: mdi:flash-alert
+path: battery-guard
+cards:
+  - type: vertical-stack
+    cards:
+      # =======================================================================
+      # Row 1: Status Overview
+      # =======================================================================
+      - type: horizontal-stack
+        cards:
+          - type: gauge
+            entity: sensor.battery_state_of_capacity
+            name: Battery
+            unit: "%"
+            min: 0
+            max: 100
+            severity:
+              green: 50
+              yellow: 20
+              red: 10
+            needle: true
+
+          - type: entities
+            title: Status
+            entities:
+              - entity: binary_sensor.battery_guard_power_outage
+                name: Power Outage
+              - entity: input_boolean.battery_guard_active
+                name: Emergency Mode
+              - entity: input_boolean.battery_guard_tier2_disabled
+                name: Tier 2 Disabled
+
+      # =======================================================================
+      # Row 2: Configuration
+      # =======================================================================
+      - type: entities
+        title: Configuration
+        show_header_toggle: false
+        entities:
+          - entity: input_number.battery_guard_tier2_threshold
+            name: "Tier 2 Threshold (Shutdown)"
+          - entity: input_number.battery_guard_tier2_recovery_threshold
+            name: "Tier 2 Recovery Threshold"
+          - entity: input_boolean.battery_guard_auto_recovery
+            name: "Auto-Recovery Enabled"
+          - type: divider
+          - entity: sensor.battery_guard_unassigned_devices
+            name: "Unassigned Devices"
+
+      # =======================================================================
+      # Row 3: Devices by Tier
+      # =======================================================================
+
+      # --- Tier 1: Off Immediately ---
+      - type: custom:auto-entities
+        card:
+          type: entities
+          title: "🔴 Tier 1 — Off Immediately During Outage"
+          show_header_toggle: false
+        filter:
+          include:
+            - label: battery_guard_tier1
+        sort:
+          method: domain
+
+      # --- Tier 2: Off at Low SOC ---
+      - type: custom:auto-entities
+        card:
+          type: entities
+          title: "🟡 Tier 2 — Off at Low Battery"
+          show_header_toggle: false
+        filter:
+          include:
+            - label: battery_guard_tier2
+        sort:
+          method: domain
+
+      # --- Tier 3: Never Off ---
+      - type: custom:auto-entities
+        card:
+          type: entities
+          title: "🟢 Tier 3 — Never Turn Off"
+          show_header_toggle: false
+        filter:
+          include:
+            - label: battery_guard_tier3
+        sort:
+          method: domain
+
+      # =======================================================================
+      # Row 4: Unassigned Devices
+      # =======================================================================
+      - type: markdown
+        title: "⚠️ Unassigned Devices"
+        content: >
+          {% set entities = state_attr('sensor.battery_guard_unassigned_devices', 'entities') %}
+          {% if entities and entities | count > 0 %}
+          **{{ entities | count }} devices without label:**
+
+          {% for entity in entities %}
+          - `{{ entity }}` — {{ states[entity].attributes.friendly_name | default(entity) }}
+          {% endfor %}
+
+          *Assign labels: Settings → Devices & Services → Select entity → Add label*
+          {% else %}
+          All devices are assigned to a Battery Guard tier. ✅
+          {% endif %}
+
+      # =======================================================================
+      # Manual Controls (for testing)
+      # =======================================================================
+      - type: entities
+        title: "🛠️ Manual Controls"
+        show_header_toggle: false
+        entities:
+          - type: button
+            name: "Turn Off Tier 1 (Test)"
+            action_name: Execute
+            tap_action:
+              action: call-service
+              service: script.battery_guard_tier_off
+              service_data:
+                tier: battery_guard_tier1
+          - type: button
+            name: "Turn Off Tier 2 (Test)"
+            action_name: Execute
+            tap_action:
+              action: call-service
+              service: script.battery_guard_tier_off
+              service_data:
+                tier: battery_guard_tier2
+          - type: button
+            name: "Restore All"
+            action_name: Execute
+            tap_action:
+              action: call-service
+              service: script.battery_guard_restore_all

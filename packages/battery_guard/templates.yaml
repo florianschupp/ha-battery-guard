@@ -1,0 +1,48 @@
+# =============================================================================
+# Battery Guard: Template Sensors
+# =============================================================================
+# - Power outage detection (binary_sensor)
+# - Unassigned device detection (sensor)
+
+template:
+  - binary_sensor:
+      - name: "Battery Guard: Power Outage"
+        unique_id: battery_guard_power_outage
+        device_class: problem
+        icon: mdi:transmission-tower-off
+        # Option A: huawei_solar grid status (adjust entity_id once Modbus is active)
+        state: >
+          {{ states('sensor.grid_connection_status') in ['Off-Grid', 'Disconnected'] }}
+        # Option B (fallback): Shelly 3EM voltage monitoring
+        # When all 3 phases drop below 50V = power outage
+        # state: >
+        #   {{ states('sensor.stromzahler_nb_suites_gesamt_channel_a_voltage') | float(230) < 50
+        #      and states('sensor.stromzahler_nb_suites_gesamt_channel_b_voltage') | float(230) < 50
+        #      and states('sensor.stromzahler_nb_suites_gesamt_channel_c_voltage') | float(230) < 50 }}
+
+  - sensor:
+      - name: "Battery Guard: Unassigned Devices"
+        unique_id: battery_guard_unassigned_devices
+        icon: mdi:help-circle
+        unit_of_measurement: "devices"
+        state: >
+          {% set all_entities = states.switch | map(attribute='entity_id') | list
+             + states.climate | map(attribute='entity_id') | list
+             + states.light | map(attribute='entity_id') | list
+             + states.media_player | map(attribute='entity_id') | list %}
+          {% set assigned = label_entities('battery_guard_tier1')
+             + label_entities('battery_guard_tier2')
+             + label_entities('battery_guard_tier3') %}
+          {% set ignored = label_entities('battery_guard_ignore') %}
+          {{ (all_entities | reject('in', assigned) | reject('in', ignored) | list) | count }}
+        attributes:
+          entities: >
+            {% set all_entities = states.switch | map(attribute='entity_id') | list
+               + states.climate | map(attribute='entity_id') | list
+               + states.light | map(attribute='entity_id') | list
+               + states.media_player | map(attribute='entity_id') | list %}
+            {% set assigned = label_entities('battery_guard_tier1')
+               + label_entities('battery_guard_tier2')
+               + label_entities('battery_guard_tier3') %}
+            {% set ignored = label_entities('battery_guard_ignore') %}
+            {{ all_entities | reject('in', assigned) | reject('in', ignored) | list }}

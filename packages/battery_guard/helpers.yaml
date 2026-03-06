@@ -1,0 +1,40 @@
+# =============================================================================
+# Battery Guard: Configurable Helpers
+# =============================================================================
+# These helpers control thresholds and status flags for the emergency power
+# automation. All values are adjustable via the HA dashboard UI.
+
+input_number:
+  battery_guard_tier2_threshold:
+    name: "Battery Guard: Tier 2 SOC Threshold"
+    min: 10
+    max: 90
+    step: 5
+    initial: 30
+    unit_of_measurement: "%"
+    icon: mdi:battery-alert
+    mode: slider
+
+  battery_guard_tier2_recovery_threshold:
+    name: "Battery Guard: Tier 2 Recovery Threshold"
+    min: 10
+    max: 90
+    step: 5
+    initial: 40
+    unit_of_measurement: "%"
+    icon: mdi:battery-plus
+    mode: slider
+
+input_boolean:
+  battery_guard_active:
+    name: "Battery Guard: Emergency Mode Active"
+    icon: mdi:flash-alert
+
+  battery_guard_auto_recovery:
+    name: "Battery Guard: Auto-Recovery Tier 2"
+    icon: mdi:autorenew
+    initial: true
+
+  battery_guard_tier2_disabled:
+    name: "Battery Guard: Tier 2 Disabled"
+    icon: mdi:power-plug-off

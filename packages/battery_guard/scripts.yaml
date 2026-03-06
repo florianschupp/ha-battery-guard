@@ -1,0 +1,113 @@
+# =============================================================================
+# Battery Guard: Reusable Scripts
+# =============================================================================
+# All scripts are label-based: devices are discovered dynamically via
+# label_entities(). New devices only need a label — no YAML changes required.
+
+script:
+  battery_guard_tier_off:
+    alias: "Battery Guard: Turn Off Tier"
+    description: "Turns off all devices in a given battery guard tier"
+    fields:
+      tier:
+        description: "Label name of the tier (battery_guard_tier1 or battery_guard_tier2)"
+        required: true
+        selector:
+          select:
+            options:
+              - battery_guard_tier1
+              - battery_guard_tier2
+    sequence:
+      - service: homeassistant.turn_off
+        target:
+          entity_id: "{{ label_entities(tier) }}"
+      # Stop EV charging separately (tier 1 only)
+      - if:
+          - condition: template
+            value_template: "{{ tier == 'battery_guard_tier1' }}"
+        then:
+          - service: automation.trigger
+            target:
+              entity_id: automation.wallbox_ladestopp
+
+  battery_guard_tier_on:
+    alias: "Battery Guard: Restore Tier"
+    description: "Restores devices in a tier (excludes HVAC and media players)"
+    fields:
+      tier:
+        description: "Label name of the tier"
+        required: true
+        selector:
+          select:
+            options:
+              - battery_guard_tier1
+              - battery_guard_tier2
+    sequence:
+      # Deliberately do NOT restore climate and media_player entities
+      # Reason: HVAC has high inrush current, wallbox needs manual start
+      - service: homeassistant.turn_on
+        target:
+          entity_id: >
+            {{ label_entities(tier)
+               | reject('match', 'climate.')
+               | reject('match', 'media_player.')
+               | list }}
+
+  battery_guard_restore_all:
+    alias: "Battery Guard: Full Reset After Grid Restore"
+    description: "Restores all devices and resets emergency mode status"
+    sequence:
+      - service: script.battery_guard_tier_on
+        data:
+          tier: battery_guard_tier1
+      - service: script.battery_guard_tier_on
+        data:
+          tier: battery_guard_tier2
+      - service: input_boolean.turn_off
+        target:
+          entity_id:
+            - input_boolean.battery_guard_active
+            - input_boolean.battery_guard_tier2_disabled
+
+  battery_guard_notify:
+    alias: "Battery Guard: Send Notification"
+    description: "Sends a notification through all configured channels"
+    fields:
+      title:
+        description: "Notification title"
+        required: true
+        selector:
+          text:
+      message:
+        description: "Notification body"
+        required: true
+        selector:
+          text:
+            multiline: true
+      critical:
+        description: "Critical notification (breaks through Do Not Disturb)"
+        required: false
+        default: false
+        selector:
+          boolean:
+    sequence:
+      # Channel 1: HA Companion App (iPhone)
+      - service: notify.mobile_app_rphone_bsnss_2
+        data:
+          title: "{{ title }}"
+          message: "{{ message }}"
+          data:
+            push:
+              interruption-level: >
+                {{ 'critical' if critical else 'active' }}
+      # Channel 2: Persistent notification in HA UI
+      - service: persistent_notification.create
+        data:
+          title: "{{ title }}"
+          message: "{{ message }}"
+          notification_id: "battery_guard_{{ now().timestamp() | int }}"
+      # Add more channels here:
+      # - service: notify.telegram
+      #   data:
+      #     title: "{{ title }}"
+      #     message: "{{ message }}"

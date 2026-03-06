@@ -1,0 +1,190 @@
+# =============================================================================
+# Battery Guard: Automations
+# =============================================================================
+# 6 automations for emergency power management:
+# 1. Power outage detected -> tier 1 off immediately
+# 2. SOC below threshold -> tier 2 off
+# 3. Grid restored -> full reset
+# 4. SOC recovered -> tier 2 back on (configurable)
+# 5. Critical battery level -> warning
+# 6. New unassigned devices -> notification
+
+automation:
+  # =========================================================================
+  # 1. Power Outage Detected -> Tier 1 Off Immediately
+  # =========================================================================
+  - id: battery_guard_outage_tier1
+    alias: "Battery Guard: Power Outage — Tier 1 Off"
+    description: "When a power outage is detected, all tier 1 devices are turned off immediately"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.battery_guard_power_outage
+        to: "on"
+    action:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.battery_guard_active
+      - service: script.battery_guard_tier_off
+        data:
+          tier: battery_guard_tier1
+      - service: script.battery_guard_notify
+        data:
+          title: "⚡ Power Outage Detected"
+          message: >
+            Power outage detected! Tier 1 devices have been turned off
+            (HVAC, water heaters, TV, EV charger).
+            Battery: {{ states('sensor.battery_state_of_capacity') }}%
+          critical: true
+    mode: single
+
+  # =========================================================================
+  # 2. Battery Below Threshold -> Tier 2 Off
+  # =========================================================================
+  - id: battery_guard_low_soc_tier2
+    alias: "Battery Guard: Low SOC — Tier 2 Off"
+    description: "When battery drops below threshold, tier 2 devices are turned off"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.battery_state_of_capacity
+        below: input_number.battery_guard_tier2_threshold
+    condition:
+      - condition: state
+        entity_id: input_boolean.battery_guard_active
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.battery_guard_tier2_disabled
+        state: "off"
+    action:
+      - service: script.battery_guard_tier_off
+        data:
+          tier: battery_guard_tier2
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.battery_guard_tier2_disabled
+      - service: script.battery_guard_notify
+        data:
+          title: "🔋 Low Battery — Tier 2 Off"
+          message: >
+            Battery below {{ states('input_number.battery_guard_tier2_threshold') | int }}%.
+            Tier 2 devices have been turned off (refrigerators, lights).
+            Current SOC: {{ states('sensor.battery_state_of_capacity') }}%
+          critical: false
+    mode: single
+
+  # =========================================================================
+  # 3. Grid Restored -> Full Reset
+  # =========================================================================
+  - id: battery_guard_grid_restored
+    alias: "Battery Guard: Grid Restored — Reset"
+    description: "When grid power returns, all devices are restored"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.battery_guard_power_outage
+        to: "off"
+    condition:
+      - condition: state
+        entity_id: input_boolean.battery_guard_active
+        state: "on"
+    action:
+      - service: script.battery_guard_restore_all
+      - service: script.battery_guard_notify
+        data:
+          title: "✅ Grid Power Restored"
+          message: >
+            Grid power is back! Switches and lights have been restored.
+            Please manually restart HVAC systems and EV charger.
+            Battery: {{ states('sensor.battery_state_of_capacity') }}%
+          critical: false
+    mode: single
+
+  # =========================================================================
+  # 4. Battery Recovered -> Tier 2 Back On (configurable)
+  # =========================================================================
+  - id: battery_guard_soc_recovery
+    alias: "Battery Guard: SOC Recovered — Tier 2 On"
+    description: "When battery recovers, tier 2 devices are restored"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.battery_state_of_capacity
+        above: input_number.battery_guard_tier2_recovery_threshold
+    condition:
+      - condition: state
+        entity_id: input_boolean.battery_guard_active
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.battery_guard_auto_recovery
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.battery_guard_tier2_disabled
+        state: "on"
+    action:
+      - service: script.battery_guard_tier_on
+        data:
+          tier: battery_guard_tier2
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.battery_guard_tier2_disabled
+      - service: script.battery_guard_notify
+        data:
+          title: "🔋 Battery Recovered — Tier 2 On"
+          message: >
+            Battery above {{ states('input_number.battery_guard_tier2_recovery_threshold') | int }}%.
+            Tier 2 devices have been restored.
+            Current SOC: {{ states('sensor.battery_state_of_capacity') }}%
+          critical: false
+    mode: single
+
+  # =========================================================================
+  # 5. Critical Battery Level -> Warning
+  # =========================================================================
+  - id: battery_guard_soc_critical
+    alias: "Battery Guard: Critical Battery Level"
+    description: "Warning when battery drops below 10%"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.battery_state_of_capacity
+        below: 10
+    condition:
+      - condition: state
+        entity_id: input_boolean.battery_guard_active
+        state: "on"
+    action:
+      - service: script.battery_guard_notify
+        data:
+          title: "🚨 CRITICAL: Battery Below 10%!"
+          message: >
+            WARNING: Battery at only {{ states('sensor.battery_state_of_capacity') }}%!
+            Only critical devices (tier 3) are still active.
+            Please minimize all non-essential consumption!
+          critical: true
+    mode: single
+
+  # =========================================================================
+  # 6. New Unassigned Devices Detected -> Notification
+  # =========================================================================
+  - id: battery_guard_unassigned_devices
+    alias: "Battery Guard: Unassigned Devices Detected"
+    description: "Notification when new devices without a Battery Guard label are detected"
+    trigger:
+      - platform: state
+        entity_id: sensor.battery_guard_unassigned_devices
+    condition:
+      - condition: template
+        value_template: >
+          {{ trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}
+    action:
+      - service: script.battery_guard_notify
+        data:
+          title: "🔌 New Unassigned Devices"
+          message: >
+            There are {{ states('sensor.battery_guard_unassigned_devices') }} devices
+            without a Battery Guard label. Please assign labels via:
+            Settings → Devices & Services → Entity → Label
+          critical: false
+      - service: persistent_notification.create
+        data:
+          title: "Battery Guard: Unassigned Devices"
+          message: >
+            {{ state_attr('sensor.battery_guard_unassigned_devices', 'entities') }}
+          notification_id: battery_guard_unassigned
+    mode: single
