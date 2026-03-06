@@ -1,5 +1,7 @@
 # Battery Guard for Home Assistant
 
+> **Note:** This integration was built for a specific home setup (Huawei SUN2000 + LUNA2000 battery + BackupBox with Shelly 3EM voltage monitoring). It should work with other PV battery systems that expose SOC and grid status sensors in Home Assistant, but has only been tested with this configuration. Use at your own risk and feel free to adapt it to your needs.
+
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![GitHub Release](https://img.shields.io/github/v/release/florianschupp/ha-battery-guard)](https://github.com/florianschupp/ha-battery-guard/releases)
 [![License: MIT](https://img.shields.io/github/license/florianschupp/ha-battery-guard)](LICENSE)
@@ -23,12 +25,12 @@ Battery Guard monitors your PV battery system and automatically shuts down non-e
 
 When a power outage is detected:
 
-1. **Immediately**: Tier 1 devices are turned off (HVAC, water heaters, EV charger)
-2. **Battery below threshold** (default 30%): Tier 2 devices are turned off (refrigerators, lights)
+1. **Immediately**: Tier 1 devices are turned off (e.g., HVAC, water heaters, EV charger)
+2. **Battery below threshold** (default 30%): Tier 2 devices are turned off (e.g., non-essential lights, entertainment)
 3. **Battery recovers** (default 40%): Tier 2 devices are restored
 4. **Grid restored**: All devices are restored automatically
 
-**Tier 3** devices (internet router, security cameras) are never turned off.
+**Tier 3** devices (e.g., internet router, security cameras, freezer) are never turned off. You decide which devices go into which tier.
 
 ## Installation
 
