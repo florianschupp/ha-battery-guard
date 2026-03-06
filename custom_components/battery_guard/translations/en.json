@@ -3,16 +3,16 @@
     "step": {
       "user": {
         "title": "Battery SOC Sensor",
-        "description": "Select the sensor that reports your battery's state of charge (SOC).",
+        "description": "Select the sensor that reports your battery's state of charge (SOC). You can skip this and add it later via integration options if Modbus is not set up yet.",
         "data": {
-          "soc_sensor": "Battery SOC sensor"
+          "soc_sensor": "Battery SOC sensor (optional)"
         }
       },
       "grid": {
         "title": "Grid Connection Detection",
-        "description": "Select how power outages are detected. You can use a grid status sensor or voltage monitoring.",
+        "description": "Select how power outages are detected. You can skip this step and configure it later via integration options.",
         "data": {
-          "grid_sensor": "Grid connection status sensor",
+          "grid_sensor": "Grid connection status sensor (optional)",
           "use_voltage": "Use voltage monitoring instead (Shelly 3EM)"
         }
       },
@@ -27,7 +27,7 @@
       },
       "thresholds": {
         "title": "Battery Thresholds",
-        "description": "Configure when tier 2 devices should be turned off and restored based on battery SOC.",
+        "description": "Configure when tier 2 devices should be turned off and restored based on battery SOC. You can adjust these later in the integration options.",
         "data": {
           "tier2_threshold": "Tier 2 shutdown threshold",
           "recovery_threshold": "Tier 2 recovery threshold",
@@ -36,7 +36,7 @@
       },
       "notifications": {
         "title": "Notification Services",
-        "description": "Select which notification services should receive Battery Guard alerts. Persistent notifications are always enabled.",
+        "description": "Select which notification services should receive Battery Guard alerts. Persistent notifications are always enabled. You can change this later.",
         "data": {
           "notify_services": "Notification services"
         }
@@ -49,12 +49,15 @@
   "options": {
     "step": {
       "init": {
-        "title": "Battery Guard Options",
-        "description": "Adjust thresholds and settings.",
+        "title": "Battery Guard Settings",
+        "description": "Configure sensors, thresholds, and notifications. Add sensors here once your PV system is integrated via Modbus. Changes will reload the integration.",
         "data": {
+          "soc_sensor": "Battery SOC sensor",
+          "grid_sensor": "Grid connection status sensor",
           "tier2_threshold": "Tier 2 shutdown threshold",
           "recovery_threshold": "Tier 2 recovery threshold",
-          "critical_soc": "Critical battery level"
+          "critical_soc": "Critical battery level",
+          "notify_services": "Notification services"
         }
       }
     },

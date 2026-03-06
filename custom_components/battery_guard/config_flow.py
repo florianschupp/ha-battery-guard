@@ -43,16 +43,16 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 1: Select battery SOC sensor."""
+        """Step 1: Select battery SOC sensor (optional — can be added later)."""
         if user_input is not None:
-            self.data[CONF_SOC_SENSOR] = user_input[CONF_SOC_SENSOR]
+            self.data[CONF_SOC_SENSOR] = user_input.get(CONF_SOC_SENSOR, "")
             return await self.async_step_grid()
 
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_SOC_SENSOR): selector.EntitySelector(
+                    vol.Optional(CONF_SOC_SENSOR): selector.EntitySelector(
                         selector.EntitySelectorConfig(
                             domain="sensor",
                         )
@@ -207,7 +207,11 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class BatteryGuardOptionsFlow(OptionsFlow):
-    """Handle options flow for Battery Guard."""
+    """Handle options flow for Battery Guard.
+
+    Allows changing sensors, thresholds, and notifications after initial setup.
+    Sensor changes trigger an integration reload to pick up the new entities.
+    """
 
     def __init__(self, config_entry) -> None:
         """Initialize options flow."""
@@ -216,20 +220,59 @@ class BatteryGuardOptionsFlow(OptionsFlow):
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manage the options."""
+        """Main options: sensors + thresholds."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            if user_input[CONF_RECOVERY_THRESHOLD] <= user_input[CONF_TIER2_THRESHOLD]:
+            recovery = user_input.get(
+                CONF_RECOVERY_THRESHOLD, DEFAULT_TIER2_RECOVERY_THRESHOLD
+            )
+            threshold = user_input.get(CONF_TIER2_THRESHOLD, DEFAULT_TIER2_THRESHOLD)
+            if recovery <= threshold:
                 errors[CONF_RECOVERY_THRESHOLD] = "recovery_must_exceed_threshold"
             else:
-                return self.async_create_entry(title="", data=user_input)
+                # Merge with existing config data
+                new_data = {**self.config_entry.data, **user_input}
+                # Normalize empty strings
+                for key in (CONF_SOC_SENSOR, CONF_GRID_SENSOR):
+                    if not new_data.get(key):
+                        new_data[key] = ""
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry, data=new_data
+                )
+                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                return self.async_create_entry(title="", data={})
 
         current = self.config_entry.data
+
+        # Build notify service options
+        services = self.hass.services.async_services().get("notify", {})
+        notify_options = [
+            selector.SelectOptionDict(value=f"notify.{svc}", label=svc)
+            for svc in services
+        ]
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    # --- Sensors ---
+                    vol.Optional(
+                        CONF_SOC_SENSOR,
+                        description={
+                            "suggested_value": current.get(CONF_SOC_SENSOR, "")
+                        },
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="sensor")
+                    ),
+                    vol.Optional(
+                        CONF_GRID_SENSOR,
+                        description={
+                            "suggested_value": current.get(CONF_GRID_SENSOR, "")
+                        },
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="sensor")
+                    ),
+                    # --- Thresholds ---
                     vol.Required(
                         CONF_TIER2_THRESHOLD,
                         default=current.get(
@@ -268,6 +311,18 @@ class BatteryGuardOptionsFlow(OptionsFlow):
                             max=30,
                             step=1,
                             unit_of_measurement="%",
+                        )
+                    ),
+                    # --- Notifications ---
+                    vol.Optional(
+                        CONF_NOTIFY_SERVICES,
+                        description={
+                            "suggested_value": current.get(CONF_NOTIFY_SERVICES, [])
+                        },
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=notify_options,
+                            multiple=True,
                         )
                     ),
                 }
