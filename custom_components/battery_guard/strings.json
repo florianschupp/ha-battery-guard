@@ -8,6 +8,11 @@
           "tier2_threshold": "Tier 2 shutdown threshold",
           "recovery_threshold": "Tier 2 recovery threshold",
           "critical_soc": "Critical battery level"
+        },
+        "data_description": {
+          "tier2_threshold": "When battery drops below this level, tier 2 devices (e.g. lights, refrigerators) are turned off to save power.",
+          "recovery_threshold": "When battery recovers above this level, tier 2 devices are turned back on. Must be higher than shutdown threshold to prevent oscillation.",
+          "critical_soc": "Below this level, a critical alert is sent. Only tier 3 devices (e.g. router, security) remain active."
         }
       },
       "notifications": {
@@ -15,6 +20,9 @@
         "description": "Select which notification services should receive Battery Guard alerts. Persistent notifications are always enabled. You can change this later.",
         "data": {
           "notify_services": "Notification services"
+        },
+        "data_description": {
+          "notify_services": "Select one or more notification services (e.g. mobile app, Telegram). Leave empty to only use persistent notifications."
         }
       }
     },
@@ -31,6 +39,11 @@
           "soc_sensor": "Battery SOC sensor",
           "grid_sensor": "Grid connection status sensor",
           "use_voltage": "Use voltage monitoring instead (Shelly 3EM)"
+        },
+        "data_description": {
+          "soc_sensor": "The sensor that reports your battery's state of charge in percent (e.g. from Modbus).",
+          "grid_sensor": "A sensor that indicates whether grid power is available (on/off or connected/disconnected).",
+          "use_voltage": "Enable this if you use a Shelly 3EM for grid detection via per-phase voltage monitoring instead of a grid status sensor."
         }
       },
       "voltage": {
@@ -40,6 +53,11 @@
           "voltage_phase_a": "Phase A voltage sensor",
           "voltage_phase_b": "Phase B voltage sensor",
           "voltage_phase_c": "Phase C voltage sensor"
+        },
+        "data_description": {
+          "voltage_phase_a": "Shelly 3EM voltage sensor for phase A (L1).",
+          "voltage_phase_b": "Shelly 3EM voltage sensor for phase B (L2).",
+          "voltage_phase_c": "Shelly 3EM voltage sensor for phase C (L3)."
         }
       },
       "thresholds": {
@@ -50,6 +68,12 @@
           "recovery_threshold": "Tier 2 recovery threshold",
           "critical_soc": "Critical battery level",
           "notify_services": "Notification services"
+        },
+        "data_description": {
+          "tier2_threshold": "When battery drops below this level, tier 2 devices are turned off.",
+          "recovery_threshold": "When battery recovers above this level, tier 2 devices are restored. Must be higher than shutdown threshold.",
+          "critical_soc": "Below this level, a critical alert is sent. Only tier 3 devices remain active.",
+          "notify_services": "Select notification services for Battery Guard alerts."
         }
       }
     },
