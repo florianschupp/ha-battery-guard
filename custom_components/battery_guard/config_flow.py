@@ -182,7 +182,9 @@ class BatteryGuardOptionsFlow(OptionsFlow):
                             "suggested_value": current.get(CONF_SOC_SENSOR, "")
                         },
                     ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
+                        selector.EntitySelectorConfig(
+                            domain=["sensor", "input_number"],
+                        )
                     ),
                     vol.Optional(
                         CONF_GRID_SENSOR,
@@ -190,7 +192,9 @@ class BatteryGuardOptionsFlow(OptionsFlow):
                             "suggested_value": current.get(CONF_GRID_SENSOR, "")
                         },
                     ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
+                        selector.EntitySelectorConfig(
+                            domain=["sensor", "binary_sensor", "input_boolean"],
+                        )
                     ),
                     vol.Optional(
                         CONF_USE_VOLTAGE,

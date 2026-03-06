@@ -41,8 +41,8 @@
           "use_voltage": "Use voltage monitoring instead (Shelly 3EM)"
         },
         "data_description": {
-          "soc_sensor": "The sensor that reports your battery's state of charge in percent (e.g. from Modbus).",
-          "grid_sensor": "A sensor that indicates whether grid power is available (on/off or connected/disconnected).",
+          "soc_sensor": "Entity that reports your battery's state of charge in percent. Accepts sensors (e.g. Modbus) or input_number helpers for testing.",
+          "grid_sensor": "Entity that indicates whether grid power is available. Accepts sensors, binary sensors, or input_boolean helpers for testing.",
           "use_voltage": "Enable this if you use a Shelly 3EM for grid detection via per-phase voltage monitoring instead of a grid status sensor."
         }
       },
