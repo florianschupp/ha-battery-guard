@@ -97,6 +97,37 @@ export function TierAssignmentStep() {
         </button>
       </div>
 
+      {/* Instruction text */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4 text-sm text-blue-800">
+        <p className="mb-1.5 font-medium">
+          Assign each device to an emergency power tier:
+        </p>
+        <ul className="space-y-0.5 text-blue-700">
+          <li>
+            <span className="font-medium">Tier 1</span> — Turned off
+            immediately when a power outage is detected (e.g. HVAC, EV
+            charger)
+          </li>
+          <li>
+            <span className="font-medium">Tier 2</span> — Turned off when
+            battery drops below the configured threshold (e.g. lights,
+            refrigerators)
+          </li>
+          <li>
+            <span className="font-medium">Tier 3</span> — Never turned off,
+            stays on as long as battery lasts (e.g. network, Home Assistant)
+          </li>
+          <li>
+            <span className="font-medium">Ignore</span> — Excluded from
+            Battery Guard, no action taken
+          </li>
+        </ul>
+        <p className="mt-1.5 text-blue-600">
+          Click &quot;Assign&quot; on each device to select a tier. All
+          devices must be assigned before you can continue.
+        </p>
+      </div>
+
       {/* Search */}
       <input
         type="text"
