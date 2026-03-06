@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
-import { WizardProvider, useWizard } from './context/WizardContext'
+import { useCallback, useEffect } from 'react'
+import { WizardProvider } from './context/WizardContext'
+import { useWizard } from './hooks/useWizard'
 import { WizardShell } from './components/layout/WizardShell'
 import { ConnectionStep } from './steps/ConnectionStep'
 import { TierAssignmentStep } from './steps/TierAssignmentStep'
@@ -9,8 +10,7 @@ import { connectFromPanel, isInsidePanel } from './services/ha-websocket'
 function WizardRouter() {
   const { currentStep, dispatch, setCurrentStep } = useWizard()
 
-  // Auto-connect when embedded in HA panel
-  useEffect(() => {
+  const autoConnect = useCallback(() => {
     if (isInsidePanel()) {
       connectFromPanel()
         .then(() => {
@@ -21,7 +21,12 @@ function WizardRouter() {
           console.error('Panel auto-connect failed:', err)
         })
     }
-  }, [])
+  }, [dispatch, setCurrentStep])
+
+  // Auto-connect when embedded in HA panel
+  useEffect(() => {
+    autoConnect()
+  }, [autoConnect])
 
   switch (currentStep) {
     case 'connection':

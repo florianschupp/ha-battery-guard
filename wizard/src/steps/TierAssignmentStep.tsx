@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useWizard } from '../context/WizardContext'
+import { useCallback, useEffect, useState } from 'react'
+import { useWizard } from '../hooks/useWizard'
 import {
   discoverEntities,
   getCurrentAssignments,
@@ -16,11 +16,7 @@ export function TierAssignmentStep() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    loadEntities()
-  }, [])
-
-  async function loadEntities() {
+  const loadEntities = useCallback(async () => {
     setLoading(true)
     try {
       const entities = await discoverEntities()
@@ -38,7 +34,11 @@ export function TierAssignmentStep() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [dispatch])
+
+  useEffect(() => {
+    loadEntities()
+  }, [loadEntities])
 
   function assignEntity(entityId: string, tierId: string) {
     dispatch({ type: 'SET_ASSIGNMENT', entityId, labelId: tierId })

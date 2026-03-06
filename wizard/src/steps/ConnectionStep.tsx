@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useWizard } from '../context/WizardContext'
+import { useWizard } from '../hooks/useWizard'
 import { connect } from '../services/ha-websocket'
 import { WIZARD_STEPS } from '../types/wizard-types'
 

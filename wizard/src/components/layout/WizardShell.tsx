@@ -1,4 +1,4 @@
-import { useWizard } from '../../context/WizardContext'
+import { useWizard } from '../../hooks/useWizard'
 import { WIZARD_STEPS, STEP_LABELS } from '../../types/wizard-types'
 
 export function WizardShell({ children }: { children: React.ReactNode }) {
