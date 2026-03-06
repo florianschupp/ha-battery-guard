@@ -32,7 +32,12 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Battery Guard."""
+    """Handle a config flow for Battery Guard.
+
+    The config flow only asks for thresholds and notifications.
+    Sensors (SOC, grid, voltage) are configured via the Options flow
+    so the integration can be installed before Modbus is set up.
+    """
 
     VERSION = 1
 
@@ -43,78 +48,7 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 1: Select battery SOC sensor (optional — can be added later)."""
-        if user_input is not None:
-            self.data[CONF_SOC_SENSOR] = user_input.get(CONF_SOC_SENSOR, "")
-            return await self.async_step_grid()
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(CONF_SOC_SENSOR): selector.EntitySelector(
-                        selector.EntitySelectorConfig(
-                            domain="sensor",
-                        )
-                    ),
-                }
-            ),
-        )
-
-    async def async_step_grid(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Step 2: Select grid status detection method."""
-        if user_input is not None:
-            self.data[CONF_USE_VOLTAGE] = user_input.get(CONF_USE_VOLTAGE, False)
-            if self.data[CONF_USE_VOLTAGE]:
-                return await self.async_step_voltage()
-            self.data[CONF_GRID_SENSOR] = user_input.get(CONF_GRID_SENSOR, "")
-            return await self.async_step_thresholds()
-
-        return self.async_show_form(
-            step_id="grid",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(CONF_GRID_SENSOR): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
-                    vol.Optional(CONF_USE_VOLTAGE, default=False): bool,
-                }
-            ),
-        )
-
-    async def async_step_voltage(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Step 2b: Voltage monitoring sensors (Shelly 3EM fallback)."""
-        if user_input is not None:
-            self.data[CONF_VOLTAGE_PHASE_A] = user_input[CONF_VOLTAGE_PHASE_A]
-            self.data[CONF_VOLTAGE_PHASE_B] = user_input[CONF_VOLTAGE_PHASE_B]
-            self.data[CONF_VOLTAGE_PHASE_C] = user_input[CONF_VOLTAGE_PHASE_C]
-            return await self.async_step_thresholds()
-
-        return self.async_show_form(
-            step_id="voltage",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_VOLTAGE_PHASE_A): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
-                    vol.Required(CONF_VOLTAGE_PHASE_B): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
-                    vol.Required(CONF_VOLTAGE_PHASE_C): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
-                }
-            ),
-        )
-
-    async def async_step_thresholds(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Step 3: SOC thresholds."""
+        """Step 1: SOC thresholds."""
         errors: dict[str, str] = {}
         if user_input is not None:
             if user_input[CONF_RECOVERY_THRESHOLD] <= user_input[CONF_TIER2_THRESHOLD]:
@@ -124,7 +58,7 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_notifications()
 
         return self.async_show_form(
-            step_id="thresholds",
+            step_id="user",
             data_schema=vol.Schema(
                 {
                     vol.Required(
@@ -168,9 +102,13 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_notifications(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 4: Notification services."""
+        """Step 2: Notification services."""
         if user_input is not None:
             self.data[CONF_NOTIFY_SERVICES] = user_input.get(CONF_NOTIFY_SERVICES, [])
+            # Initialize sensor fields as empty (configured via Options)
+            self.data.setdefault(CONF_SOC_SENSOR, "")
+            self.data.setdefault(CONF_GRID_SENSOR, "")
+            self.data.setdefault(CONF_USE_VOLTAGE, False)
             return self.async_create_entry(
                 title="Battery Guard",
                 data=self.data,
@@ -209,18 +147,101 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
 class BatteryGuardOptionsFlow(OptionsFlow):
     """Handle options flow for Battery Guard.
 
-    Allows changing sensors, thresholds, and notifications after initial setup.
+    Allows configuring sensors, thresholds, and notifications after setup.
+    This is where SOC sensor, grid sensor, and voltage monitoring are added
+    once the PV system is integrated via Modbus.
     Sensor changes trigger an integration reload to pick up the new entities.
     """
 
     def __init__(self, config_entry) -> None:
         """Initialize options flow."""
         self.config_entry = config_entry
+        self._data: dict[str, Any] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Main options: sensors + thresholds."""
+        """Step 1: Sensors — SOC + grid detection method."""
+        if user_input is not None:
+            self._data[CONF_SOC_SENSOR] = user_input.get(CONF_SOC_SENSOR, "")
+            self._data[CONF_GRID_SENSOR] = user_input.get(CONF_GRID_SENSOR, "")
+            self._data[CONF_USE_VOLTAGE] = user_input.get(CONF_USE_VOLTAGE, False)
+            if self._data[CONF_USE_VOLTAGE]:
+                return await self.async_step_voltage()
+            return await self.async_step_thresholds()
+
+        current = self.config_entry.data
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_SOC_SENSOR,
+                        description={
+                            "suggested_value": current.get(CONF_SOC_SENSOR, "")
+                        },
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="sensor")
+                    ),
+                    vol.Optional(
+                        CONF_GRID_SENSOR,
+                        description={
+                            "suggested_value": current.get(CONF_GRID_SENSOR, "")
+                        },
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="sensor")
+                    ),
+                    vol.Optional(
+                        CONF_USE_VOLTAGE,
+                        default=current.get(CONF_USE_VOLTAGE, False),
+                    ): bool,
+                }
+            ),
+        )
+
+    async def async_step_voltage(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 1b: Voltage monitoring sensors (Shelly 3EM)."""
+        if user_input is not None:
+            self._data[CONF_VOLTAGE_PHASE_A] = user_input[CONF_VOLTAGE_PHASE_A]
+            self._data[CONF_VOLTAGE_PHASE_B] = user_input[CONF_VOLTAGE_PHASE_B]
+            self._data[CONF_VOLTAGE_PHASE_C] = user_input[CONF_VOLTAGE_PHASE_C]
+            return await self.async_step_thresholds()
+
+        current = self.config_entry.data
+
+        return self.async_show_form(
+            step_id="voltage",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_VOLTAGE_PHASE_A,
+                        default=current.get(CONF_VOLTAGE_PHASE_A, ""),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="sensor")
+                    ),
+                    vol.Required(
+                        CONF_VOLTAGE_PHASE_B,
+                        default=current.get(CONF_VOLTAGE_PHASE_B, ""),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="sensor")
+                    ),
+                    vol.Required(
+                        CONF_VOLTAGE_PHASE_C,
+                        default=current.get(CONF_VOLTAGE_PHASE_C, ""),
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="sensor")
+                    ),
+                }
+            ),
+        )
+
+    async def async_step_thresholds(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 2: Thresholds + notifications."""
         errors: dict[str, str] = {}
         if user_input is not None:
             recovery = user_input.get(
@@ -230,9 +251,10 @@ class BatteryGuardOptionsFlow(OptionsFlow):
             if recovery <= threshold:
                 errors[CONF_RECOVERY_THRESHOLD] = "recovery_must_exceed_threshold"
             else:
+                self._data.update(user_input)
                 # Merge with existing config data
-                new_data = {**self.config_entry.data, **user_input}
-                # Normalize empty strings
+                new_data = {**self.config_entry.data, **self._data}
+                # Normalize empty sensor strings
                 for key in (CONF_SOC_SENSOR, CONF_GRID_SENSOR):
                     if not new_data.get(key):
                         new_data[key] = ""
@@ -252,26 +274,9 @@ class BatteryGuardOptionsFlow(OptionsFlow):
         ]
 
         return self.async_show_form(
-            step_id="init",
+            step_id="thresholds",
             data_schema=vol.Schema(
                 {
-                    # --- Sensors ---
-                    vol.Optional(
-                        CONF_SOC_SENSOR,
-                        description={
-                            "suggested_value": current.get(CONF_SOC_SENSOR, "")
-                        },
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
-                    vol.Optional(
-                        CONF_GRID_SENSOR,
-                        description={
-                            "suggested_value": current.get(CONF_GRID_SENSOR, "")
-                        },
-                    ): selector.EntitySelector(
-                        selector.EntitySelectorConfig(domain="sensor")
-                    ),
                     # --- Thresholds ---
                     vol.Required(
                         CONF_TIER2_THRESHOLD,

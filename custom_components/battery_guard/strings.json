@@ -2,32 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Battery SOC Sensor",
-        "description": "Select the sensor that reports your battery's state of charge (SOC). You can skip this and add it later via integration options if Modbus is not set up yet.",
-        "data": {
-          "soc_sensor": "Battery SOC sensor (optional)"
-        }
-      },
-      "grid": {
-        "title": "Grid Connection Detection",
-        "description": "Select how power outages are detected. You can skip this step and configure it later via integration options.",
-        "data": {
-          "grid_sensor": "Grid connection status sensor (optional)",
-          "use_voltage": "Use voltage monitoring instead (Shelly 3EM)"
-        }
-      },
-      "voltage": {
-        "title": "Voltage Monitoring Sensors",
-        "description": "Select the voltage sensors for each phase. A power outage is detected when all three phases drop below 50V.",
-        "data": {
-          "voltage_phase_a": "Phase A voltage sensor",
-          "voltage_phase_b": "Phase B voltage sensor",
-          "voltage_phase_c": "Phase C voltage sensor"
-        }
-      },
-      "thresholds": {
         "title": "Battery Thresholds",
-        "description": "Configure when tier 2 devices should be turned off and restored based on battery SOC. You can adjust these later in the integration options.",
+        "description": "Configure when tier 2 devices should be turned off and restored based on battery SOC. You can adjust these later in the integration options. Sensors (SOC, grid) can be added after setup via Configure.",
         "data": {
           "tier2_threshold": "Tier 2 shutdown threshold",
           "recovery_threshold": "Tier 2 recovery threshold",
@@ -49,11 +25,27 @@
   "options": {
     "step": {
       "init": {
-        "title": "Battery Guard Settings",
-        "description": "Configure sensors, thresholds, and notifications. Add sensors here once your PV system is integrated via Modbus. Changes will reload the integration.",
+        "title": "Sensors",
+        "description": "Configure SOC and grid sensors. Add these once your PV system is integrated via Modbus. Leave empty if not available yet.",
         "data": {
           "soc_sensor": "Battery SOC sensor",
           "grid_sensor": "Grid connection status sensor",
+          "use_voltage": "Use voltage monitoring instead (Shelly 3EM)"
+        }
+      },
+      "voltage": {
+        "title": "Voltage Monitoring Sensors",
+        "description": "Select the voltage sensors for each phase. A power outage is detected when all three phases drop below 50V.",
+        "data": {
+          "voltage_phase_a": "Phase A voltage sensor",
+          "voltage_phase_b": "Phase B voltage sensor",
+          "voltage_phase_c": "Phase C voltage sensor"
+        }
+      },
+      "thresholds": {
+        "title": "Thresholds & Notifications",
+        "description": "Configure battery thresholds and notification services. Changes will reload the integration.",
+        "data": {
           "tier2_threshold": "Tier 2 shutdown threshold",
           "recovery_threshold": "Tier 2 recovery threshold",
           "critical_soc": "Critical battery level",
