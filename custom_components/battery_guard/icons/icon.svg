@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="batteryGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4CAF50;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2E7D32;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF9800;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E65100;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Battery body -->
+  <rect x="52" y="48" width="152" height="180" rx="16" ry="16"
+        fill="url(#batteryGrad)" stroke="#1B5E20" stroke-width="4"/>
+
+  <!-- Battery terminal -->
+  <rect x="96" y="28" width="64" height="24" rx="8" ry="8"
+        fill="url(#batteryGrad)" stroke="#1B5E20" stroke-width="4"/>
+
+  <!-- Battery fill level (white inner) -->
+  <rect x="64" y="60" width="128" height="156" rx="10" ry="10"
+        fill="white" opacity="0.25"/>
+
+  <!-- Shield overlay -->
+  <path d="M128 88 C128 88 88 104 88 104 C88 104 88 160 88 160
+           C88 192 128 212 128 212 C128 212 168 192 168 160
+           C168 160 168 104 168 104 Z"
+        fill="url(#shieldGrad)" stroke="#BF360C" stroke-width="3"
+        opacity="0.95"/>
+
+  <!-- Checkmark on shield -->
+  <polyline points="108,152 122,168 148,136"
+            fill="none" stroke="white" stroke-width="8"
+            stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Lightning bolt accent (top left) -->
+  <path d="M72 74 L82 62 L78 78 L88 66"
+        fill="none" stroke="#FFF9C4" stroke-width="3"
+        stroke-linecap="round" stroke-linejoin="round" opacity="0.8"/>
+</svg>
