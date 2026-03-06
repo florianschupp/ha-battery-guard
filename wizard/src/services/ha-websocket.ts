@@ -23,17 +23,20 @@ export async function connect(
 
 /**
  * Connect from inside an HA panel via postMessage auth.
- * The battery-guard-panel.js web component sends auth info
- * via postMessage when the iframe loads.
  *
- * Returns a Promise that resolves when the auth message is received
- * and the connection is established.
+ * Handshake protocol:
+ * 1. Set up listener for "battery_guard_auth" messages
+ * 2. Send "battery_guard_ready" to parent so it knows we're listening
+ * 3. Parent responds with auth credentials
+ * 4. Connect to HA WebSocket using the token
+ *
+ * Also handles the fallback case where parent sends auth on iframe load.
  */
 export function connectFromPanel(): Promise<Connection> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       reject(new Error('Timed out waiting for HA panel auth'))
-    }, 10000)
+    }, 15000)
 
     function handleMessage(event: MessageEvent) {
       if (event.data?.type === 'battery_guard_auth') {
@@ -41,11 +44,19 @@ export function connectFromPanel(): Promise<Connection> {
         clearTimeout(timeout)
 
         const { hassUrl, accessToken } = event.data
+        if (!accessToken) {
+          reject(new Error('No access token received from panel'))
+          return
+        }
         connect(hassUrl, accessToken).then(resolve).catch(reject)
       }
     }
 
+    // Listen for auth response
     window.addEventListener('message', handleMessage)
+
+    // Signal to parent that we're ready to receive auth
+    window.parent.postMessage({ type: 'battery_guard_ready' }, '*')
   })
 }
 

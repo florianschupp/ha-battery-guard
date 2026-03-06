@@ -1,12 +1,13 @@
 /**
- * Battery Guard Panel — Thin web component wrapper for HA sidebar integration.
+ * Battery Guard Panel — Web component wrapper for HA sidebar integration.
  *
- * This component:
- * 1. Receives the `hass` object from Home Assistant
- * 2. Creates an iframe pointing to the React SPA
- * 3. Posts the auth token to the iframe via postMessage
+ * Auth handshake protocol:
+ * 1. Parent creates iframe with the React wizard
+ * 2. Wizard sends "battery_guard_ready" when its listener is set up
+ * 3. Parent responds with "battery_guard_auth" containing hassUrl + accessToken
+ * 4. Wizard connects to HA via WebSocket using the token
  *
- * The React wizard inside the iframe picks up the auth via `connectFromPanel()`.
+ * Also sends auth on iframe load (with delay) as a fallback.
  */
 class BatteryGuardPanel extends HTMLElement {
   constructor() {
@@ -15,10 +16,22 @@ class BatteryGuardPanel extends HTMLElement {
   }
 
   set hass(hass) {
+    this._hass = hass;
     if (!this._initialized) {
-      this._hass = hass;
       this._initialize();
     }
+  }
+
+  _getAuthMessage() {
+    return {
+      type: 'battery_guard_auth',
+      hassUrl: this._hass.auth
+        ? this._hass.auth.data.hassUrl
+        : window.location.origin,
+      accessToken: this._hass.auth
+        ? this._hass.auth.accessToken
+        : '',
+    };
   }
 
   _initialize() {
@@ -28,20 +41,18 @@ class BatteryGuardPanel extends HTMLElement {
     iframe.src = '/api/panel_custom/battery_guard/index.html';
     iframe.style.cssText = 'width:100%;height:100%;border:none;';
 
+    // Listen for the wizard signaling it's ready for auth
+    window.addEventListener('message', (event) => {
+      if (event.data?.type === 'battery_guard_ready') {
+        iframe.contentWindow.postMessage(this._getAuthMessage(), '*');
+      }
+    });
+
+    // Also send auth after iframe load with a delay as fallback
     iframe.addEventListener('load', () => {
-      // Send auth info to the wizard iframe
-      iframe.contentWindow.postMessage(
-        {
-          type: 'battery_guard_auth',
-          hassUrl: this._hass.auth
-            ? this._hass.auth.data.hassUrl
-            : window.location.origin,
-          accessToken: this._hass.auth
-            ? this._hass.auth.accessToken
-            : '',
-        },
-        '*'
-      );
+      setTimeout(() => {
+        iframe.contentWindow.postMessage(this._getAuthMessage(), '*');
+      }, 500);
     });
 
     this.shadowRoot.innerHTML = `
