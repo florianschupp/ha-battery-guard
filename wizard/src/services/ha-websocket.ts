@@ -22,42 +22,29 @@ export async function connect(
 }
 
 /**
- * Connect from inside an HA panel via postMessage auth.
+ * Connect from inside an HA panel iframe via same-origin DOM access.
  *
- * Handshake protocol:
- * 1. Set up listener for "battery_guard_auth" messages
- * 2. Send "battery_guard_ready" to parent so it knows we're listening
- * 3. Parent responds with auth credentials
- * 4. Connect to HA WebSocket using the token
- *
- * Also handles the fallback case where parent sends auth on iframe load.
+ * Since the iframe is served from HA's own static files (same origin),
+ * we can directly access the parent window's <home-assistant> element
+ * to read the auth token. No postMessage handshake needed.
  */
-export function connectFromPanel(): Promise<Connection> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Timed out waiting for HA panel auth'))
-    }, 15000)
+export async function connectFromPanel(): Promise<Connection> {
+  // Access HA's hass object via same-origin parent DOM
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const haElement = window.parent.document.querySelector('home-assistant') as any
+  if (!haElement?.hass) {
+    throw new Error('Could not access Home Assistant element in parent frame')
+  }
 
-    function handleMessage(event: MessageEvent) {
-      if (event.data?.type === 'battery_guard_auth') {
-        window.removeEventListener('message', handleMessage)
-        clearTimeout(timeout)
+  const hass = haElement.hass
+  const hassUrl = hass.auth?.data?.hassUrl || window.location.origin
+  const accessToken = hass.auth?.accessToken
 
-        const { hassUrl, accessToken } = event.data
-        if (!accessToken) {
-          reject(new Error('No access token received from panel'))
-          return
-        }
-        connect(hassUrl, accessToken).then(resolve).catch(reject)
-      }
-    }
+  if (!accessToken) {
+    throw new Error('No access token available from Home Assistant')
+  }
 
-    // Listen for auth response
-    window.addEventListener('message', handleMessage)
-
-    // Signal to parent that we're ready to receive auth
-    window.parent.postMessage({ type: 'battery_guard_ready' }, '*')
-  })
+  return connect(hassUrl, accessToken)
 }
 
 /** Check if running inside an HA panel iframe */

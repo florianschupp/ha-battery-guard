@@ -19,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 PANEL_TITLE = "Battery Guard"
 PANEL_ICON = "mdi:battery-heart"
 
-# Static path for serving the React SPA + panel web component
+# Static path for serving the React SPA
 STATIC_PATH = "/api/panel_custom/battery_guard"
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 
@@ -27,9 +27,9 @@ FRONTEND_DIR = Path(__file__).parent / "frontend"
 async def async_register_panel(hass: HomeAssistant) -> None:
     """Register the Battery Guard panel and static file serving.
 
-    Uses a custom panel (web component) that wraps the React wizard
-    in an iframe and passes HA authentication via postMessage.
-    This avoids the need for manual URL/token entry.
+    Uses an iframe panel pointing to the React SPA.
+    The wizard auto-authenticates via same-origin DOM access:
+    it reads the auth token from window.parent's <home-assistant> element.
     """
     if not FRONTEND_DIR.is_dir():
         _LOGGER.warning(
@@ -49,22 +49,15 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         ]
     )
 
-    # Register as a custom panel using the web component wrapper.
-    # The web component (battery-guard-panel.js) creates an iframe
-    # to the React SPA and passes auth via postMessage.
+    # Register as iframe panel — the React SPA handles auth via
+    # same-origin DOM access (window.parent -> <home-assistant>.hass)
     async_register_built_in_panel(
         hass,
-        component_name="custom",
+        component_name="iframe",
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
         frontend_url_path=DOMAIN,
-        config={
-            "_panel_custom": {
-                "name": "battery-guard-panel",
-                "js_url": f"{STATIC_PATH}/battery-guard-panel.js",
-                "embed_iframe": False,
-            }
-        },
+        config={"url": f"{STATIC_PATH}/index.html"},
         require_admin=False,
     )
 
