@@ -10,7 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import DOMAIN, ALL_LABELS, TRACKED_DOMAINS
+from .const import DOMAIN, TRACKED_DOMAINS
+from .labels import get_label_map
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,8 +35,9 @@ class BatteryGuardCoordinator(DataUpdateCoordinator):
 
         # Collect all entities assigned to battery_guard labels
         assigned_ids: set[str] = set()
-        for label_id in ALL_LABELS:
-            for entry in er.async_entries_for_label(registry, label_id):
+        label_map = get_label_map(self.hass)
+        for actual_label_id in label_map.values():
+            for entry in er.async_entries_for_label(registry, actual_label_id):
                 assigned_ids.add(entry.entity_id)
 
         # Find unassigned entities in tracked domains

@@ -8,7 +8,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, PLATFORMS
-from .labels import async_ensure_labels
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,8 +29,11 @@ async def async_setup_entry(
         "config": entry.data,
     }
 
-    # Ensure Battery Guard labels exist
-    await async_ensure_labels(hass)
+    # Ensure Battery Guard labels exist and store their actual HA IDs
+    from .labels import async_ensure_labels
+
+    label_map = await async_ensure_labels(hass)
+    hass.data[DOMAIN]["label_map"] = label_map
 
     # Set up coordinator for unassigned device counting
     from .coordinator import BatteryGuardCoordinator

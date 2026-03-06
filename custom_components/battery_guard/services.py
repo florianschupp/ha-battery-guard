@@ -17,6 +17,7 @@ from .const import (
     LABEL_TIER1,
     LABEL_TIER2,
 )
+from .labels import resolve_label_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,8 +42,13 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             _LOGGER.error("Invalid tier: %s", tier)
             return
 
+        actual_label_id = resolve_label_id(hass, tier)
+        if not actual_label_id:
+            _LOGGER.error("Cannot resolve label ID for tier: %s", tier)
+            return
+
         registry = er.async_get(hass)
-        entities = er.async_entries_for_label(registry, tier)
+        entities = er.async_entries_for_label(registry, actual_label_id)
         entity_ids = [e.entity_id for e in entities if not e.disabled_by]
 
         if not entity_ids:
@@ -65,8 +71,13 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             _LOGGER.error("Invalid tier: %s", tier)
             return
 
+        actual_label_id = resolve_label_id(hass, tier)
+        if not actual_label_id:
+            _LOGGER.error("Cannot resolve label ID for tier: %s", tier)
+            return
+
         registry = er.async_get(hass)
-        entities = er.async_entries_for_label(registry, tier)
+        entities = er.async_entries_for_label(registry, actual_label_id)
         entity_ids = [
             e.entity_id
             for e in entities
