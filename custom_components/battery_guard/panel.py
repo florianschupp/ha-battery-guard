@@ -16,18 +16,21 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-PANEL_URL = "/battery-guard"
 PANEL_TITLE = "Battery Guard"
 PANEL_ICON = "mdi:battery-heart"
-PANEL_COMPONENT = "iframe"
 
-# Static path for serving the React SPA
+# Static path for serving the React SPA + panel web component
 STATIC_PATH = "/api/panel_custom/battery_guard"
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 
 
 async def async_register_panel(hass: HomeAssistant) -> None:
-    """Register the Battery Guard panel and static file serving."""
+    """Register the Battery Guard panel and static file serving.
+
+    Uses a custom panel (web component) that wraps the React wizard
+    in an iframe and passes HA authentication via postMessage.
+    This avoids the need for manual URL/token entry.
+    """
     if not FRONTEND_DIR.is_dir():
         _LOGGER.warning(
             "Frontend directory not found at %s — panel will not be available",
@@ -41,19 +44,27 @@ async def async_register_panel(hass: HomeAssistant) -> None:
             StaticPathConfig(
                 url_path=STATIC_PATH,
                 path=str(FRONTEND_DIR),
-                cache_headers=True,
+                cache_headers=False,
             )
         ]
     )
 
-    # Register the panel as an iframe panel
+    # Register as a custom panel using the web component wrapper.
+    # The web component (battery-guard-panel.js) creates an iframe
+    # to the React SPA and passes auth via postMessage.
     async_register_built_in_panel(
         hass,
-        component_name=PANEL_COMPONENT,
+        component_name="custom",
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
         frontend_url_path=DOMAIN,
-        config={"url": f"{STATIC_PATH}/index.html"},
+        config={
+            "_panel_custom": {
+                "name": "battery-guard-panel",
+                "js_url": f"{STATIC_PATH}/battery-guard-panel.js",
+                "embed_iframe": False,
+            }
+        },
         require_admin=False,
     )
 
