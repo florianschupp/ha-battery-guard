@@ -3,7 +3,7 @@
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 # Platforms
 PLATFORMS = [
