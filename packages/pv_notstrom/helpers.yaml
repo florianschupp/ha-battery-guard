@@ -1,0 +1,40 @@
+# =============================================================================
+# PV-Notstrom: Konfigurierbare Helfer
+# =============================================================================
+# Diese Helfer steuern die Schwellwerte und den Status der Notstrom-Automatisierung.
+# Alle Werte sind über die HA-UI (Dashboard) änderbar.
+
+input_number:
+  pv_notstrom_schwellwert_stufe2:
+    name: "Notstrom: Batterie-Schwellwert Stufe 2"
+    min: 10
+    max: 90
+    step: 5
+    initial: 30
+    unit_of_measurement: "%"
+    icon: mdi:battery-alert
+    mode: slider
+
+  pv_notstrom_recovery_schwellwert:
+    name: "Notstrom: Recovery-Schwellwert Stufe 2"
+    min: 10
+    max: 90
+    step: 5
+    initial: 40
+    unit_of_measurement: "%"
+    icon: mdi:battery-plus
+    mode: slider
+
+input_boolean:
+  pv_notstrom_aktiv:
+    name: "Notstrom-Modus aktiv"
+    icon: mdi:flash-alert
+
+  pv_notstrom_auto_recovery:
+    name: "Notstrom: Auto-Recovery Stufe 2"
+    icon: mdi:autorenew
+    initial: true
+
+  pv_notstrom_stufe2_abgeschaltet:
+    name: "Notstrom: Stufe 2 wurde abgeschaltet"
+    icon: mdi:power-plug-off

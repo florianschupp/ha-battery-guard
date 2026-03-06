@@ -1,0 +1,113 @@
+# =============================================================================
+# PV-Notstrom: Wiederverwendbare Scripts
+# =============================================================================
+# Alle Scripts arbeiten Label-basiert: Geräte werden dynamisch über
+# label_entities() gefunden. Neue Geräte brauchen nur ein Label.
+
+script:
+  pv_notstrom_stufe_aus:
+    alias: "Notstrom: Stufe abschalten"
+    description: "Schaltet alle Geräte einer Notstrom-Stufe ab"
+    fields:
+      stufe:
+        description: "Label-Name der Stufe (notstrom_stufe1 oder notstrom_stufe2)"
+        required: true
+        selector:
+          select:
+            options:
+              - notstrom_stufe1
+              - notstrom_stufe2
+    sequence:
+      - service: homeassistant.turn_off
+        target:
+          entity_id: "{{ label_entities(stufe) }}"
+      # Wallbox Ladestopp separat (nur bei Stufe 1)
+      - if:
+          - condition: template
+            value_template: "{{ stufe == 'notstrom_stufe1' }}"
+        then:
+          - service: automation.trigger
+            target:
+              entity_id: automation.wallbox_ladestopp
+
+  pv_notstrom_stufe_ein:
+    alias: "Notstrom: Stufe wieder einschalten"
+    description: "Schaltet Geräte einer Stufe wieder ein (ohne Klimaanlagen und Medien)"
+    fields:
+      stufe:
+        description: "Label-Name der Stufe"
+        required: true
+        selector:
+          select:
+            options:
+              - notstrom_stufe1
+              - notstrom_stufe2
+    sequence:
+      # Klimaanlagen und Media Player bewusst NICHT wieder einschalten
+      # Grund: Hoher Anlaufstrom bei Klimaanlagen, Wallbox braucht bewussten Start
+      - service: homeassistant.turn_on
+        target:
+          entity_id: >
+            {{ label_entities(stufe)
+               | reject('match', 'climate.')
+               | reject('match', 'media_player.')
+               | list }}
+
+  pv_notstrom_alles_ein:
+    alias: "Notstrom: Reset nach Netz-Rückkehr"
+    description: "Stellt alle Geräte wieder her und setzt den Notstrom-Status zurück"
+    sequence:
+      - service: script.pv_notstrom_stufe_ein
+        data:
+          stufe: notstrom_stufe1
+      - service: script.pv_notstrom_stufe_ein
+        data:
+          stufe: notstrom_stufe2
+      - service: input_boolean.turn_off
+        target:
+          entity_id:
+            - input_boolean.pv_notstrom_aktiv
+            - input_boolean.pv_notstrom_stufe2_abgeschaltet
+
+  pv_notstrom_benachrichtigung:
+    alias: "Notstrom: Benachrichtigung senden"
+    description: "Sendet eine Benachrichtigung über alle konfigurierten Kanäle"
+    fields:
+      titel:
+        description: "Titel der Nachricht"
+        required: true
+        selector:
+          text:
+      nachricht:
+        description: "Inhalt der Nachricht"
+        required: true
+        selector:
+          text:
+            multiline: true
+      kritisch:
+        description: "Kritische Benachrichtigung (durchbricht Nicht-Stören)"
+        required: false
+        default: false
+        selector:
+          boolean:
+    sequence:
+      # Kanal 1: HA Companion App (iPhone)
+      - service: notify.mobile_app_rphone_bsnss_2
+        data:
+          title: "{{ titel }}"
+          message: "{{ nachricht }}"
+          data:
+            push:
+              interruption-level: >
+                {{ 'critical' if kritisch else 'active' }}
+      # Kanal 2: Persistente Notification in HA-UI
+      - service: persistent_notification.create
+        data:
+          title: "{{ titel }}"
+          message: "{{ nachricht }}"
+          notification_id: "pv_notstrom_{{ now().timestamp() | int }}"
+      # Weitere Kanäle hier ergänzen:
+      # - service: notify.telegram
+      #   data:
+      #     title: "{{ titel }}"
+      #     message: "{{ nachricht }}"

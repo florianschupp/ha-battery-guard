@@ -1,0 +1,190 @@
+# =============================================================================
+# PV-Notstrom: Automationen
+# =============================================================================
+# 6 Automationen für die Notstrom-Steuerung:
+# 1. Stromausfall → Stufe 1 sofort aus
+# 2. SOC unter Schwellwert → Stufe 2 aus
+# 3. Netz zurück → Reset
+# 4. SOC erholt → Stufe 2 wieder ein (konfigurierbar)
+# 5. Kritischer Batteriestand → Warnung
+# 6. Neue Geräte ohne Label → Hinweis
+
+automation:
+  # =========================================================================
+  # 1. Stromausfall erkannt → Stufe 1 sofort abschalten
+  # =========================================================================
+  - id: pv_notstrom_stromausfall_stufe1
+    alias: "Notstrom: Stromausfall — Stufe 1 abschalten"
+    description: "Bei Stromausfall werden alle Stufe-1-Geräte sofort abgeschaltet"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.stromausfall
+        to: "on"
+    action:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.pv_notstrom_aktiv
+      - service: script.pv_notstrom_stufe_aus
+        data:
+          stufe: notstrom_stufe1
+      - service: script.pv_notstrom_benachrichtigung
+        data:
+          titel: "⚡ Stromausfall erkannt"
+          nachricht: >
+            Stromausfall erkannt! Stufe-1-Geräte wurden abgeschaltet
+            (Klimaanlagen, Boiler, TV, Wallbox).
+            Batterie: {{ states('sensor.battery_state_of_capacity') }}%
+          kritisch: true
+    mode: single
+
+  # =========================================================================
+  # 2. Batterie unter Schwellwert → Stufe 2 abschalten
+  # =========================================================================
+  - id: pv_notstrom_soc_stufe2
+    alias: "Notstrom: SOC niedrig — Stufe 2 abschalten"
+    description: "Bei niedrigem Batteriestand werden Stufe-2-Geräte abgeschaltet"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.battery_state_of_capacity
+        below: input_number.pv_notstrom_schwellwert_stufe2
+    condition:
+      - condition: state
+        entity_id: input_boolean.pv_notstrom_aktiv
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.pv_notstrom_stufe2_abgeschaltet
+        state: "off"
+    action:
+      - service: script.pv_notstrom_stufe_aus
+        data:
+          stufe: notstrom_stufe2
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.pv_notstrom_stufe2_abgeschaltet
+      - service: script.pv_notstrom_benachrichtigung
+        data:
+          titel: "🔋 Batterie niedrig — Stufe 2 aus"
+          nachricht: >
+            Batteriestand unter {{ states('input_number.pv_notstrom_schwellwert_stufe2') | int }}%.
+            Stufe-2-Geräte wurden abgeschaltet (Kühlschränke, Lichter).
+            Aktueller SOC: {{ states('sensor.battery_state_of_capacity') }}%
+          kritisch: false
+    mode: single
+
+  # =========================================================================
+  # 3. Netz zurück → Alle Geräte wiederherstellen
+  # =========================================================================
+  - id: pv_notstrom_netz_zurueck
+    alias: "Notstrom: Netz zurück — Reset"
+    description: "Bei Netz-Rückkehr werden alle Geräte wiederhergestellt"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.stromausfall
+        to: "off"
+    condition:
+      - condition: state
+        entity_id: input_boolean.pv_notstrom_aktiv
+        state: "on"
+    action:
+      - service: script.pv_notstrom_alles_ein
+      - service: script.pv_notstrom_benachrichtigung
+        data:
+          titel: "✅ Netzstrom wiederhergestellt"
+          nachricht: >
+            Das Stromnetz ist zurück! Switches und Lichter wurden wiederhergestellt.
+            Klimaanlagen und Wallbox bitte manuell starten.
+            Batterie: {{ states('sensor.battery_state_of_capacity') }}%
+          kritisch: false
+    mode: single
+
+  # =========================================================================
+  # 4. Batterie erholt sich → Stufe 2 wieder einschalten (konfigurierbar)
+  # =========================================================================
+  - id: pv_notstrom_soc_recovery
+    alias: "Notstrom: SOC erholt — Stufe 2 wieder ein"
+    description: "Wenn sich die Batterie erholt, werden Stufe-2-Geräte wiederhergestellt"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.battery_state_of_capacity
+        above: input_number.pv_notstrom_recovery_schwellwert
+    condition:
+      - condition: state
+        entity_id: input_boolean.pv_notstrom_aktiv
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.pv_notstrom_auto_recovery
+        state: "on"
+      - condition: state
+        entity_id: input_boolean.pv_notstrom_stufe2_abgeschaltet
+        state: "on"
+    action:
+      - service: script.pv_notstrom_stufe_ein
+        data:
+          stufe: notstrom_stufe2
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.pv_notstrom_stufe2_abgeschaltet
+      - service: script.pv_notstrom_benachrichtigung
+        data:
+          titel: "🔋 Batterie erholt — Stufe 2 wieder ein"
+          nachricht: >
+            Batteriestand über {{ states('input_number.pv_notstrom_recovery_schwellwert') | int }}%.
+            Stufe-2-Geräte wurden wiederhergestellt.
+            Aktueller SOC: {{ states('sensor.battery_state_of_capacity') }}%
+          kritisch: false
+    mode: single
+
+  # =========================================================================
+  # 5. Kritischer Batteriestand → Warnung
+  # =========================================================================
+  - id: pv_notstrom_soc_kritisch
+    alias: "Notstrom: Kritischer Batteriestand"
+    description: "Warnung bei kritisch niedrigem Batteriestand (unter 10%)"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.battery_state_of_capacity
+        below: 10
+    condition:
+      - condition: state
+        entity_id: input_boolean.pv_notstrom_aktiv
+        state: "on"
+    action:
+      - service: script.pv_notstrom_benachrichtigung
+        data:
+          titel: "🚨 KRITISCH: Batterie unter 10%!"
+          nachricht: >
+            WARNUNG: Batteriestand bei nur noch {{ states('sensor.battery_state_of_capacity') }}%!
+            Nur noch kritische Geräte (Stufe 3) sind aktiv.
+            Bitte nicht-essentiellen Verbrauch minimieren!
+          kritisch: true
+    mode: single
+
+  # =========================================================================
+  # 6. Neue/unzugewiesene Geräte erkannt → Hinweis
+  # =========================================================================
+  - id: pv_notstrom_neue_geraete
+    alias: "Notstrom: Neue Geräte ohne Zuordnung"
+    description: "Benachrichtigung wenn neue Geräte ohne Notstrom-Label erkannt werden"
+    trigger:
+      - platform: state
+        entity_id: sensor.notstrom_nicht_zugewiesene_gerate
+    condition:
+      - condition: template
+        value_template: >
+          {{ trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}
+    action:
+      - service: script.pv_notstrom_benachrichtigung
+        data:
+          titel: "🔌 Neue Geräte ohne Notstrom-Zuordnung"
+          nachricht: >
+            Es gibt {{ states('sensor.notstrom_nicht_zugewiesene_gerate') }} Geräte
+            ohne Notstrom-Label. Bitte Labels zuweisen:
+            Einstellungen → Geräte & Dienste → Entity → Label
+          kritisch: false
+      - service: persistent_notification.create
+        data:
+          title: "Notstrom: Geräte ohne Zuordnung"
+          message: >
+            {{ state_attr('sensor.notstrom_nicht_zugewiesene_gerate', 'entities') }}
+          notification_id: pv_notstrom_unzugewiesen
+    mode: single
