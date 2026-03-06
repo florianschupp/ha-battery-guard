@@ -1,0 +1,56 @@
+tier_off:
+  name: Turn off tier
+  description: Turn off all devices in a Battery Guard tier.
+  fields:
+    tier:
+      name: Tier
+      description: The battery guard tier label to turn off.
+      required: true
+      selector:
+        select:
+          options:
+            - battery_guard_tier1
+            - battery_guard_tier2
+
+tier_on:
+  name: Restore tier
+  description: Restore all devices in a Battery Guard tier (excludes climate and media_player entities).
+  fields:
+    tier:
+      name: Tier
+      description: The battery guard tier label to restore.
+      required: true
+      selector:
+        select:
+          options:
+            - battery_guard_tier1
+            - battery_guard_tier2
+
+restore_all:
+  name: Full reset
+  description: Restore all tiers and reset emergency mode status.
+
+notify:
+  name: Send notification
+  description: Send a Battery Guard notification through all configured channels.
+  fields:
+    title:
+      name: Title
+      description: Notification title.
+      required: true
+      selector:
+        text:
+    message:
+      name: Message
+      description: Notification body text.
+      required: true
+      selector:
+        text:
+          multiline: true
+    critical:
+      name: Critical
+      description: Whether this is a critical notification (breaks through Do Not Disturb).
+      required: false
+      default: false
+      selector:
+        boolean:

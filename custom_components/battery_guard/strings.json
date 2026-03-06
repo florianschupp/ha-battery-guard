@@ -1,0 +1,65 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Battery SOC Sensor",
+        "description": "Select the sensor that reports your battery's state of charge (SOC).",
+        "data": {
+          "soc_sensor": "Battery SOC sensor"
+        }
+      },
+      "grid": {
+        "title": "Grid Connection Detection",
+        "description": "Select how power outages are detected. You can use a grid status sensor or voltage monitoring.",
+        "data": {
+          "grid_sensor": "Grid connection status sensor",
+          "use_voltage": "Use voltage monitoring instead (Shelly 3EM)"
+        }
+      },
+      "voltage": {
+        "title": "Voltage Monitoring Sensors",
+        "description": "Select the voltage sensors for each phase. A power outage is detected when all three phases drop below 50V.",
+        "data": {
+          "voltage_phase_a": "Phase A voltage sensor",
+          "voltage_phase_b": "Phase B voltage sensor",
+          "voltage_phase_c": "Phase C voltage sensor"
+        }
+      },
+      "thresholds": {
+        "title": "Battery Thresholds",
+        "description": "Configure when tier 2 devices should be turned off and restored based on battery SOC.",
+        "data": {
+          "tier2_threshold": "Tier 2 shutdown threshold",
+          "recovery_threshold": "Tier 2 recovery threshold",
+          "critical_soc": "Critical battery level"
+        }
+      },
+      "notifications": {
+        "title": "Notification Services",
+        "description": "Select which notification services should receive Battery Guard alerts. Persistent notifications are always enabled.",
+        "data": {
+          "notify_services": "Notification services"
+        }
+      }
+    },
+    "error": {
+      "recovery_must_exceed_threshold": "Recovery threshold must be higher than shutdown threshold"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Battery Guard Options",
+        "description": "Adjust thresholds and settings.",
+        "data": {
+          "tier2_threshold": "Tier 2 shutdown threshold",
+          "recovery_threshold": "Tier 2 recovery threshold",
+          "critical_soc": "Critical battery level"
+        }
+      }
+    },
+    "error": {
+      "recovery_must_exceed_threshold": "Recovery threshold must be higher than shutdown threshold"
+    }
+  }
+}

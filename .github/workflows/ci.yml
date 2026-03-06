@@ -7,6 +7,36 @@ on:
     branches: [main]
 
 jobs:
+  # ==========================================================================
+  # HACS Validation
+  # ==========================================================================
+  validate-hacs:
+    name: HACS Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+
+  # ==========================================================================
+  # Python Integration
+  # ==========================================================================
+  lint-python:
+    name: Lint Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check custom_components/battery_guard/
+      - run: ruff format --check custom_components/battery_guard/
+
+  # ==========================================================================
+  # YAML Packages (kept for reference)
+  # ==========================================================================
   lint-yaml:
     name: Lint YAML Packages
     runs-on: ubuntu-latest
@@ -21,6 +51,9 @@ jobs:
           comments-indentation: disable, document-start: disable}}"
           packages/battery_guard/*.yaml
 
+  # ==========================================================================
+  # Wizard Frontend
+  # ==========================================================================
   lint-wizard:
     name: Lint & Typecheck Wizard
     runs-on: ubuntu-latest
@@ -76,6 +109,10 @@ jobs:
           cache-dependency-path: wizard/package-lock.json
       - run: npm ci
       - run: npm run build
+      - name: Copy built wizard to integration frontend
+        run: |
+          mkdir -p ../custom_components/battery_guard/frontend
+          cp -r dist/* ../custom_components/battery_guard/frontend/
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:

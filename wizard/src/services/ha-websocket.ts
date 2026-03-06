@@ -6,7 +6,6 @@ import {
 import type {
   HAEntityRegistryEntry,
   HALabel,
-  HANotifyService,
 } from '../types/ha-types'
 
 let connection: Connection | null = null
@@ -20,6 +19,39 @@ export async function connect(
   const auth = createLongLivedTokenAuth(url, accessToken)
   connection = await createConnection({ auth })
   return connection
+}
+
+/**
+ * Connect from inside an HA panel via postMessage auth.
+ * The battery-guard-panel.js web component sends auth info
+ * via postMessage when the iframe loads.
+ *
+ * Returns a Promise that resolves when the auth message is received
+ * and the connection is established.
+ */
+export function connectFromPanel(): Promise<Connection> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timed out waiting for HA panel auth'))
+    }, 10000)
+
+    function handleMessage(event: MessageEvent) {
+      if (event.data?.type === 'battery_guard_auth') {
+        window.removeEventListener('message', handleMessage)
+        clearTimeout(timeout)
+
+        const { hassUrl, accessToken } = event.data
+        connect(hassUrl, accessToken).then(resolve).catch(reject)
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+  })
+}
+
+/** Check if running inside an HA panel iframe */
+export function isInsidePanel(): boolean {
+  return window.parent !== window
 }
 
 /** Disconnect from Home Assistant */
@@ -119,22 +151,4 @@ export async function callService(
 /** List all available services */
 export async function listServices(): Promise<Record<string, Record<string, unknown>>> {
   return sendMessage('get_services')
-}
-
-/** Get notification services */
-export async function getNotifyServices(): Promise<HANotifyService[]> {
-  const services = await listServices()
-  const notifyServices: HANotifyService[] = []
-
-  if (services.notify) {
-    for (const [serviceName, serviceInfo] of Object.entries(services.notify)) {
-      notifyServices.push({
-        domain: 'notify',
-        service: serviceName,
-        name: (serviceInfo as { name?: string }).name || serviceName,
-      })
-    }
-  }
-
-  return notifyServices
 }

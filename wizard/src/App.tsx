@@ -1,27 +1,34 @@
+import { useEffect } from 'react'
 import { WizardProvider, useWizard } from './context/WizardContext'
 import { WizardShell } from './components/layout/WizardShell'
 import { ConnectionStep } from './steps/ConnectionStep'
-import { LabelSetupStep } from './steps/LabelSetupStep'
 import { TierAssignmentStep } from './steps/TierAssignmentStep'
-import { ThresholdStep } from './steps/ThresholdStep'
-import { NotificationStep } from './steps/NotificationStep'
 import { SummaryStep } from './steps/SummaryStep'
+import { connectFromPanel, isInsidePanel } from './services/ha-websocket'
 
 function WizardRouter() {
-  const { currentStep } = useWizard()
+  const { currentStep, dispatch, setCurrentStep } = useWizard()
+
+  // Auto-connect when embedded in HA panel
+  useEffect(() => {
+    if (isInsidePanel()) {
+      connectFromPanel()
+        .then(() => {
+          dispatch({ type: 'SET_CONNECTED', connected: true })
+          setCurrentStep('discovery')
+        })
+        .catch((err) => {
+          console.error('Panel auto-connect failed:', err)
+        })
+    }
+  }, [])
 
   switch (currentStep) {
     case 'connection':
       return <ConnectionStep />
-    case 'labels':
-      return <LabelSetupStep />
     case 'discovery':
     case 'assignment':
       return <TierAssignmentStep />
-    case 'thresholds':
-      return <ThresholdStep />
-    case 'notifications':
-      return <NotificationStep />
     case 'summary':
       return <SummaryStep />
     default:

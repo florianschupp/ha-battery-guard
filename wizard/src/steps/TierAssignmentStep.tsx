@@ -89,7 +89,7 @@ export function TierAssignmentStep() {
           </p>
         </div>
         <button
-          onClick={() => setCurrentStep(WIZARD_STEPS[4])}
+          onClick={() => setCurrentStep(WIZARD_STEPS[3])}
           disabled={!allAssigned}
           className="py-2 px-4 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
         >
