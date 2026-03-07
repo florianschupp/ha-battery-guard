@@ -5,6 +5,7 @@ import {
   discoverEntities,
   getCurrentAssignments,
   loadDeviceActions,
+  loadRestoreConfig,
 } from '../services/entity-service'
 import { WIZARD_STEPS } from '../types/wizard-types'
 import type { WizardEntity, ActionConfig } from '../types/wizard-types'
@@ -141,10 +142,11 @@ export function TierAssignmentStep() {
   const loadEntities = useCallback(async () => {
     setLoading(true)
     try {
-      const [entities, deviceActions, areas] = await Promise.all([
+      const [entities, deviceActions, areas, restoreConfig] = await Promise.all([
         discoverEntities(),
         loadDeviceActions(),
         discoverAreas(),
+        loadRestoreConfig(),
       ])
       const assignments = getCurrentAssignments(entities)
 
@@ -159,6 +161,7 @@ export function TierAssignmentStep() {
       dispatch({ type: 'SET_ASSIGNMENTS', assignments })
       dispatch({ type: 'SET_DEVICE_ACTIONS', deviceActions })
       dispatch({ type: 'SET_AREAS', areas })
+      dispatch({ type: 'SET_RESTORE_CONFIG', restoreConfig })
     } finally {
       setLoading(false)
     }

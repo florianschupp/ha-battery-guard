@@ -8,6 +8,7 @@ import type {
   HAEntityRegistryEntry,
   HALabel,
 } from '../types/ha-types'
+import type { RestoreConfig } from '../types/wizard-types'
 
 let connection: Connection | null = null
 
@@ -179,5 +180,22 @@ export async function setDeviceActions(
 ): Promise<void> {
   await sendMessage('battery_guard/set_device_actions', {
     device_actions: deviceActions,
+  })
+}
+
+/** Get restore configuration from the integration */
+export async function getRestoreConfig(): Promise<RestoreConfig> {
+  const result = await sendMessage<{
+    restore_config: RestoreConfig
+  }>('battery_guard/get_restore_config')
+  return result.restore_config
+}
+
+/** Save restore configuration to the integration */
+export async function setRestoreConfig(
+  restoreConfig: RestoreConfig,
+): Promise<void> {
+  await sendMessage('battery_guard/set_restore_config', {
+    restore_config: restoreConfig,
   })
 }

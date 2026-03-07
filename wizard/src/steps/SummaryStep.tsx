@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useWizard } from '../hooks/useWizard'
 import { applyAssignments } from '../services/entity-service'
-import { setDeviceActions } from '../services/ha-websocket'
+import { setDeviceActions, setRestoreConfig } from '../services/ha-websocket'
 import { WIZARD_STEPS } from '../types/wizard-types'
 import { TIER_DISPLAY } from '../lib/constants'
 
@@ -51,7 +51,15 @@ export function SummaryStep() {
         console.warn('Could not save device actions — integration may need update')
       }
 
-      setProgress('Done! Labels and actions applied successfully.')
+      // Step 3: Save restore configuration
+      setProgress('Saving restore settings...')
+      try {
+        await setRestoreConfig(config.restoreConfig)
+      } catch {
+        console.warn('Could not save restore config — integration may need update')
+      }
+
+      setProgress('Done! Labels, actions, and restore settings applied successfully.')
       dispatch({ type: 'SET_DEPLOYED', deployed: true })
     } catch (err) {
       setError(
@@ -91,7 +99,7 @@ export function SummaryStep() {
         <button
           onClick={() => {
             dispatch({ type: 'SET_DEPLOYED', deployed: false })
-            setCurrentStep(WIZARD_STEPS[2])
+            setCurrentStep(WIZARD_STEPS[3])
           }}
           className="mt-6 py-2.5 px-4 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
         >
@@ -155,6 +163,22 @@ export function SummaryStep() {
             </p>
           </div>
         )}
+
+        <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">
+            Restore Settings
+          </h3>
+          <div className="space-y-1 text-sm text-gray-600">
+            <p>
+              Restore order: {config.restoreConfig.restore_order.map((t) => t.toUpperCase().replace('TIER', 'T')).join(' → ')}
+            </p>
+            {config.restoreConfig.stay_off.length > 0 && (
+              <p>
+                {config.restoreConfig.stay_off.length} device{config.restoreConfig.stay_off.length !== 1 ? 's' : ''} will stay off after restore
+              </p>
+            )}
+          </div>
+        </div>
       </div>
 
       {progress && !error && (
@@ -171,7 +195,7 @@ export function SummaryStep() {
 
       <div className="flex gap-3">
         <button
-          onClick={() => setCurrentStep(WIZARD_STEPS[2])}
+          onClick={() => setCurrentStep(WIZARD_STEPS[3])}
           disabled={deploying}
           className="py-2.5 px-4 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
         >

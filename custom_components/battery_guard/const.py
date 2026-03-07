@@ -1,9 +1,13 @@
 """Constants for the Battery Guard integration."""
 
+from __future__ import annotations
+
+from typing import Any
+
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "2.0.3"
+VERSION = "2.1.0"
 
 # Platforms
 PLATFORMS = [
@@ -69,6 +73,25 @@ CONF_RECOVERY_THRESHOLD = "recovery_threshold"
 CONF_CRITICAL_SOC = "critical_soc"
 CONF_NOTIFY_SERVICES = "notify_services"
 CONF_DEVICE_ACTIONS = "device_actions"
+CONF_RESTORE_CONFIG = "restore_config"
+
+# Restore defaults
+DEFAULT_RESTORE_CONFIG: dict[str, Any] = {
+    "restore_order": ["tier3", "tier2", "tier1"],
+    "tier_delays": {
+        "tier3": {"tier_delay": 0, "device_delay": 2},
+        "tier2": {"tier_delay": 30, "device_delay": 5},
+        "tier1": {"tier_delay": 60, "device_delay": 10},
+    },
+    "stay_off": [],
+}
+
+# Map tier keys to label constants
+TIER_KEY_TO_LABEL: dict[str, str] = {
+    "tier1": LABEL_TIER1,
+    "tier2": LABEL_TIER2,
+    "tier3": LABEL_TIER3,
+}
 
 # Valid actions per entity domain
 DOMAIN_ACTIONS: dict[str, list[str]] = {

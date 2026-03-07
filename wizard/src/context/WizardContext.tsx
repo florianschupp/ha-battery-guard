@@ -1,6 +1,7 @@
 import { useReducer, useState, type ReactNode } from 'react'
 import type { WizardConfig, WizardAction, WizardStep } from '../types/wizard-types'
 import { WizardContext } from './wizard-context-def'
+import { DEFAULT_RESTORE_CONFIG } from '../lib/constants'
 
 const initialConfig: WizardConfig = {
   haUrl: '',
@@ -10,6 +11,7 @@ const initialConfig: WizardConfig = {
   assignments: {},
   deviceActions: {},
   areas: {},
+  restoreConfig: DEFAULT_RESTORE_CONFIG,
   deployed: false,
 }
 
@@ -55,6 +57,23 @@ function wizardReducer(
       return { ...state, deviceActions: action.deviceActions }
     case 'SET_AREAS':
       return { ...state, areas: action.areas }
+    case 'SET_RESTORE_CONFIG':
+      return { ...state, restoreConfig: action.restoreConfig }
+    case 'SET_STAY_OFF': {
+      const currentStayOff = [...state.restoreConfig.stay_off]
+      if (action.stayOff) {
+        if (!currentStayOff.includes(action.entityId)) {
+          currentStayOff.push(action.entityId)
+        }
+      } else {
+        const idx = currentStayOff.indexOf(action.entityId)
+        if (idx !== -1) currentStayOff.splice(idx, 1)
+      }
+      return {
+        ...state,
+        restoreConfig: { ...state.restoreConfig, stay_off: currentStayOff },
+      }
+    }
     case 'SET_DEPLOYED':
       return { ...state, deployed: action.deployed }
     case 'RESET':

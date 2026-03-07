@@ -4,6 +4,7 @@ import { useWizard } from './hooks/useWizard'
 import { WizardShell } from './components/layout/WizardShell'
 import { ConnectionStep } from './steps/ConnectionStep'
 import { TierAssignmentStep } from './steps/TierAssignmentStep'
+import { RestoreStep } from './steps/RestoreStep'
 import { SummaryStep } from './steps/SummaryStep'
 import { connectFromPanel, isInsidePanel } from './services/ha-websocket'
 
@@ -40,7 +41,7 @@ function WizardRouter() {
     return (
       <div className="flex items-center justify-center py-24">
         <div className="text-center">
-          <div className="inline-block w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-4" />
+          <div className="inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
           <p className="text-gray-500">Connecting to Home Assistant...</p>
         </div>
       </div>
@@ -53,6 +54,8 @@ function WizardRouter() {
     case 'discovery':
     case 'assignment':
       return <TierAssignmentStep />
+    case 'restore':
+      return <RestoreStep />
     case 'summary':
       return <SummaryStep />
     default:

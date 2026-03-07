@@ -1,11 +1,12 @@
-import { listAreas, listEntities, updateEntity, getStates, getDeviceActions } from './ha-websocket'
+import { listAreas, listEntities, updateEntity, getStates, getDeviceActions, getRestoreConfig } from './ha-websocket'
 import {
   TRACKED_DOMAINS,
   BATTERY_GUARD_LABEL_IDS,
   LABEL_MIGRATION_MAP,
+  DEFAULT_RESTORE_CONFIG,
 } from '../lib/constants'
 import { getRecommendation } from '../lib/entity-recommendations'
-import type { WizardEntity, TierAssignment, DeviceActions } from '../types/wizard-types'
+import type { WizardEntity, TierAssignment, DeviceActions, RestoreConfig } from '../types/wizard-types'
 
 /** Battery Guard integration domain — used to filter out own entities */
 const BATTERY_GUARD_PLATFORM = 'battery_guard'
@@ -113,6 +114,18 @@ export async function loadDeviceActions(): Promise<DeviceActions> {
   } catch {
     // Integration might not support this command yet (pre-v2.0.0)
     return {}
+  }
+}
+
+/**
+ * Load restore configuration from the integration's config entry.
+ * Returns defaults if the WebSocket command is not available.
+ */
+export async function loadRestoreConfig(): Promise<RestoreConfig> {
+  try {
+    return await getRestoreConfig()
+  } catch {
+    return DEFAULT_RESTORE_CONFIG
   }
 }
 

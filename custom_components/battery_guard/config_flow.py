@@ -17,6 +17,7 @@ from .const import (
     CONF_GRID_SENSOR,
     CONF_NOTIFY_SERVICES,
     CONF_RECOVERY_THRESHOLD,
+    CONF_RESTORE_CONFIG,
     CONF_SOC_SENSOR,
     CONF_TIER2_THRESHOLD,
     CONF_USE_VOLTAGE,
@@ -24,6 +25,7 @@ from .const import (
     CONF_VOLTAGE_PHASE_B,
     CONF_VOLTAGE_PHASE_C,
     DEFAULT_CRITICAL_SOC,
+    DEFAULT_RESTORE_CONFIG,
     DEFAULT_TIER2_RECOVERY_THRESHOLD,
     DEFAULT_TIER2_THRESHOLD,
     DOMAIN,
@@ -40,15 +42,14 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
     so the integration can be installed before Modbus is set up.
     """
 
-    VERSION = 2
+    VERSION = 3
 
     @staticmethod
     async def async_migrate_entry(hass, config_entry) -> bool:
         """Migrate config entry from older versions.
 
         v1 → v2: Initialize device_actions in options.
-        Existing label-based tier assignments are preserved.
-        Entities without explicit device_actions fall back to turn_off.
+        v2 → v3: Initialize restore_config in options.
         """
         _LOGGER.info(
             "Migrating Battery Guard config entry from version %s",
@@ -66,6 +67,18 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
                 config_entry, options=new_options, version=2
             )
             _LOGGER.info("Migration to version 2 complete")
+
+        if config_entry.version < 3:
+            new_options = {
+                **config_entry.options,
+                CONF_RESTORE_CONFIG: config_entry.options.get(
+                    CONF_RESTORE_CONFIG, DEFAULT_RESTORE_CONFIG
+                ),
+            }
+            hass.config_entries.async_update_entry(
+                config_entry, options=new_options, version=3
+            )
+            _LOGGER.info("Migration to version 3 complete")
 
         return True
 

@@ -8,6 +8,7 @@ state is captured so it can be fully restored when grid power returns.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -20,9 +21,13 @@ from homeassistant.helpers import entity_registry as er
 from .const import (
     CONF_DEVICE_ACTIONS,
     CONF_NOTIFY_SERVICES,
+    CONF_RESTORE_CONFIG,
+    DEFAULT_RESTORE_CONFIG,
     DOMAIN,
     LABEL_TIER1,
     LABEL_TIER2,
+    LABEL_TIER3,
+    TIER_KEY_TO_LABEL,
 )
 from .labels import resolve_label_id
 from .state_store import StateStore, execute_action, restore_state
@@ -34,12 +39,13 @@ SERVICE_TIER_ON = "tier_on"
 SERVICE_RESTORE_ALL = "restore_all"
 SERVICE_NOTIFY = "notify"
 
-VALID_TIERS = {LABEL_TIER1, LABEL_TIER2}
+VALID_TIERS = {LABEL_TIER1, LABEL_TIER2, LABEL_TIER3}
 
 # Map logical tier keys to the key used in device_actions config
 _TIER_ACTION_KEY = {
     LABEL_TIER1: "tier1",
     LABEL_TIER2: "tier2",
+    LABEL_TIER3: "tier3",
 }
 
 
@@ -51,6 +57,11 @@ def _get_state_store(hass: HomeAssistant) -> StateStore | None:
 def _get_device_actions(entry: ConfigEntry) -> dict[str, Any]:
     """Get device_actions from config entry options."""
     return entry.options.get(CONF_DEVICE_ACTIONS, {})
+
+
+def _get_restore_config(entry: ConfigEntry) -> dict[str, Any]:
+    """Get restore_config from config entry options."""
+    return entry.options.get(CONF_RESTORE_CONFIG, DEFAULT_RESTORE_CONFIG)
 
 
 def _get_action_config(
@@ -130,10 +141,8 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
     async def handle_tier_on(call: ServiceCall) -> None:
         """Restore devices in a tier to their saved state.
 
-        For each entity:
-        1. Look up saved state in StateStore
-        2. Restore using domain-specific service calls
-        3. Fallback if no saved state: generic turn_on
+        Respects restore_config: skips stay_off entities and applies
+        device_delay between individual restores.
         """
         tier = call.data["tier"]
         if tier not in VALID_TIERS:
@@ -147,17 +156,38 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
         registry = er.async_get(hass)
         entities = er.async_entries_for_label(registry, actual_label_id)
-        entity_ids = [e.entity_id for e in entities if not e.disabled_by]
+
+        # Filter out disabled and stay_off entities
+        restore_config = _get_restore_config(entry)
+        stay_off_list: list[str] = restore_config.get("stay_off", [])
+        entity_ids = [
+            e.entity_id
+            for e in entities
+            if not e.disabled_by and e.entity_id not in stay_off_list
+        ]
 
         if not entity_ids:
             _LOGGER.info("No restorable entities found for tier %s", tier)
             return
 
+        # Get device delay for this tier
+        tier_key = _TIER_ACTION_KEY.get(tier, "tier1")
+        device_delay = (
+            restore_config.get("tier_delays", {})
+            .get(tier_key, {})
+            .get("device_delay", 0)
+        )
+
         state_store = _get_state_store(hass)
 
-        _LOGGER.info("Restoring %d entities in %s", len(entity_ids), tier)
+        _LOGGER.info(
+            "Restoring %d entities in %s (device_delay=%ds)",
+            len(entity_ids),
+            tier,
+            device_delay,
+        )
 
-        for entity_id in entity_ids:
+        for i, entity_id in enumerate(entity_ids):
             try:
                 saved = (
                     state_store.get_saved_state(entity_id) if state_store else None
@@ -183,29 +213,48 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             except Exception:
                 _LOGGER.exception("Failed to restore %s", entity_id)
 
+            # Delay between devices (not after the last one)
+            if device_delay > 0 and i < len(entity_ids) - 1:
+                await asyncio.sleep(device_delay)
+
     async def handle_restore_all(call: ServiceCall) -> None:
-        """Full reset: restore both tiers and clear status flags."""
-        _LOGGER.info("Executing full Battery Guard reset")
+        """Staged restore: restore tiers in configured order with delays."""
+        _LOGGER.info("Executing staged Battery Guard restore")
 
-        # Restore tier 1 (saved states)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_TIER_ON,
-            {"tier": LABEL_TIER1},
-            blocking=True,
+        restore_config = _get_restore_config(entry)
+        restore_order: list[str] = restore_config.get(
+            "restore_order", ["tier3", "tier2", "tier1"]
         )
+        tier_delays_config: dict[str, Any] = restore_config.get("tier_delays", {})
+        stay_off_list: list[str] = restore_config.get("stay_off", [])
 
-        # Restore tier 2 (saved states)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_TIER_ON,
-            {"tier": LABEL_TIER2},
-            blocking=True,
-        )
+        for i, tier_key in enumerate(restore_order):
+            label_key = TIER_KEY_TO_LABEL.get(tier_key)
+            if not label_key:
+                _LOGGER.warning("Unknown tier key in restore_order: %s", tier_key)
+                continue
 
-        # Clear any remaining saved states
+            # Wait before restoring this tier (skip delay for first tier)
+            tier_delay = tier_delays_config.get(tier_key, {}).get("tier_delay", 0)
+            if tier_delay > 0 and i > 0:
+                _LOGGER.info(
+                    "Waiting %ds before restoring %s", tier_delay, tier_key
+                )
+                await asyncio.sleep(tier_delay)
+
+            _LOGGER.info("Restoring tier: %s", tier_key)
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_TIER_ON,
+                {"tier": label_key},
+                blocking=True,
+            )
+
+        # Clear saved states for stay_off entities (prevent stale data)
         state_store = _get_state_store(hass)
         if state_store:
+            for entity_id in stay_off_list:
+                state_store.clear_state(entity_id)
             state_store.clear_all()
 
         # Reset status switches

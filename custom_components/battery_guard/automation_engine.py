@@ -26,7 +26,9 @@ from .const import (
     DOMAIN,
     LABEL_TIER1,
     LABEL_TIER2,
+    LABEL_TIER3,
 )
+from .labels import resolve_label_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -344,7 +346,11 @@ class BatteryGuardAutomationEngine:
         )
 
     async def _on_critical_soc(self, current_soc: float) -> None:
-        """Handle critical battery level."""
+        """Handle critical battery level.
+
+        Also preemptively saves T3 device states so they can be restored
+        if the battery reaches 0% and all devices lose power.
+        """
         _LOGGER.critical(
             "CRITICAL: Battery at %.1f%% — only tier 3 devices active",
             current_soc,
@@ -364,6 +370,22 @@ class BatteryGuardAutomationEngine:
             },
             blocking=True,
         )
+
+        # Preemptively save T3 device states before potential total power loss
+        actual_label_id = resolve_label_id(self.hass, LABEL_TIER3)
+        if actual_label_id:
+            registry = er.async_get(self.hass)
+            entities = er.async_entries_for_label(registry, actual_label_id)
+            state_store = self.hass.data.get(DOMAIN, {}).get("state_store")
+            if state_store:
+                count = 0
+                for entity in entities:
+                    if not entity.disabled_by:
+                        state_store.save_state(entity.entity_id)
+                        count += 1
+                _LOGGER.info(
+                    "Saved %d T3 device states preemptively (critical SOC)", count
+                )
 
     # =========================================================================
     # 6: Unassigned Devices

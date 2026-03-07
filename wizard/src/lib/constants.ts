@@ -95,6 +95,17 @@ export const HVAC_MODES = [
   { value: 'off', label: 'Off' },
 ]
 
+/** Default restore configuration */
+export const DEFAULT_RESTORE_CONFIG = {
+  restore_order: ['tier3', 'tier2', 'tier1'],
+  tier_delays: {
+    tier3: { tier_delay: 0, device_delay: 2 },
+    tier2: { tier_delay: 30, device_delay: 5 },
+    tier1: { tier_delay: 60, device_delay: 10 },
+  },
+  stay_off: [] as string[],
+}
+
 /** Tier display info */
 export const TIER_DISPLAY = {
   battery_guard_tier1: {

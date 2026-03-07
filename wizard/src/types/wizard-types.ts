@@ -4,12 +4,14 @@ export type WizardStep =
   | 'connection'
   | 'discovery'
   | 'assignment'
+  | 'restore'
   | 'summary'
 
 export const WIZARD_STEPS: WizardStep[] = [
   'connection',
   'discovery',
   'assignment',
+  'restore',
   'summary',
 ]
 
@@ -17,6 +19,7 @@ export const STEP_LABELS: Record<WizardStep, string> = {
   connection: 'Connect',
   discovery: 'Devices',
   assignment: 'Assign',
+  restore: 'Restore',
   summary: 'Deploy',
 }
 
@@ -62,6 +65,13 @@ export type DeviceActions = Record<string, EntityDeviceActions>
  */
 export type TierAssignment = Record<string, string[]>
 
+/** Restore configuration for staged device restore after grid return */
+export interface RestoreConfig {
+  restore_order: string[]
+  tier_delays: Record<string, { tier_delay: number; device_delay: number }>
+  stay_off: string[]
+}
+
 /** Wizard configuration state */
 export interface WizardConfig {
   /** HA connection */
@@ -81,6 +91,9 @@ export interface WizardConfig {
   /** Area registry (area_id -> area name) */
   areas: Record<string, string>
 
+  /** Restore configuration */
+  restoreConfig: RestoreConfig
+
   /** Deployment status */
   deployed: boolean
 }
@@ -94,5 +107,7 @@ export type WizardAction =
   | { type: 'SET_DEVICE_ACTION'; entityId: string; tier: string; action: ActionConfig | undefined }
   | { type: 'SET_DEVICE_ACTIONS'; deviceActions: DeviceActions }
   | { type: 'SET_AREAS'; areas: Record<string, string> }
+  | { type: 'SET_RESTORE_CONFIG'; restoreConfig: RestoreConfig }
+  | { type: 'SET_STAY_OFF'; entityId: string; stayOff: boolean }
   | { type: 'SET_DEPLOYED'; deployed: boolean }
   | { type: 'RESET' }
