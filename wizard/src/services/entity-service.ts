@@ -1,4 +1,4 @@
-import { listEntities, updateEntity, getStates, getDeviceActions } from './ha-websocket'
+import { listAreas, listEntities, updateEntity, getStates, getDeviceActions } from './ha-websocket'
 import {
   TRACKED_DOMAINS,
   BATTERY_GUARD_LABEL_IDS,
@@ -58,6 +58,19 @@ export async function discoverEntities(): Promise<WizardEntity[]> {
       if (a.domain !== b.domain) return a.domain.localeCompare(b.domain)
       return a.friendly_name.localeCompare(b.friendly_name)
     })
+}
+
+/**
+ * Fetch all areas and return a map of area_id -> area name.
+ * Returns empty object if area registry is unavailable.
+ */
+export async function discoverAreas(): Promise<Record<string, string>> {
+  try {
+    const areas = await listAreas()
+    return Object.fromEntries(areas.map((a) => [a.area_id, a.name]))
+  } catch {
+    return {}
+  }
 }
 
 /**

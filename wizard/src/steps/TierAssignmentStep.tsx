@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useWizard } from '../hooks/useWizard'
 import {
+  discoverAreas,
   discoverEntities,
   getCurrentAssignments,
   loadDeviceActions,
@@ -16,10 +17,10 @@ import {
 
 /** Tier pill button definitions */
 const TIER_PILLS = [
-  { id: 'battery_guard_tier1', short: 'T1', emoji: '🔴' },
-  { id: 'battery_guard_tier2', short: 'T2', emoji: '🟡' },
-  { id: 'battery_guard_tier3', short: 'T3', emoji: '🟢' },
-  { id: 'battery_guard_ignore', short: '—', emoji: '⚪' },
+  { id: 'battery_guard_tier1', short: 'T1' },
+  { id: 'battery_guard_tier2', short: 'T2' },
+  { id: 'battery_guard_tier3', short: 'T3' },
+  { id: 'battery_guard_ignore', short: '—' },
 ] as const
 
 /** Check if a tier is an "action" tier (T1 or T2) */
@@ -43,18 +44,107 @@ function getDefaultAction(): ActionConfig {
   return { action: 'turn_off' }
 }
 
+/** Format action as compact badge text. Returns null for turn_off (default). */
+function formatActionBadge(action: ActionConfig | undefined): string | null {
+  if (!action || action.action === 'turn_off') return null
+  switch (action.action) {
+    case 'set_hvac_mode':
+      return (action.hvac_mode as string) || 'fan_only'
+    case 'set_temperature':
+      return `${(action.temperature as number) || 18}°C`
+    case 'dim':
+      return `${(action.brightness_pct as number) || 20}%`
+    default:
+      return action.action
+  }
+}
+
+/** Group entities by area */
+function groupByArea(
+  entities: WizardEntity[],
+  areaNames: Record<string, string>,
+): { areaId: string; areaName: string; entities: WizardEntity[] }[] {
+  const groups = new Map<string, WizardEntity[]>()
+
+  for (const entity of entities) {
+    const areaId = entity.area_id || '__unassigned__'
+    if (!groups.has(areaId)) groups.set(areaId, [])
+    groups.get(areaId)!.push(entity)
+  }
+
+  return Array.from(groups.entries())
+    .map(([areaId, ents]) => ({
+      areaId,
+      areaName:
+        areaId === '__unassigned__'
+          ? 'No area assigned'
+          : areaNames[areaId] || areaId,
+      entities: ents,
+    }))
+    .sort((a, b) => {
+      if (a.areaId === '__unassigned__') return 1
+      if (b.areaId === '__unassigned__') return -1
+      return a.areaName.localeCompare(b.areaName)
+    })
+}
+
+// ============================================================================
+// Tier pill button shared between EntityRow and BulkActionBar
+// ============================================================================
+
+function TierPillButton({
+  pillId,
+  short,
+  isActive,
+  onClick,
+}: {
+  pillId: string
+  short: string
+  isActive: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={TIER_DISPLAY[pillId as keyof typeof TIER_DISPLAY]?.label}
+      className={`w-9 h-8 rounded-md text-xs font-bold transition-all ${
+        isActive
+          ? pillId === 'battery_guard_tier1'
+            ? 'bg-red-500 text-white shadow-sm'
+            : pillId === 'battery_guard_tier2'
+              ? 'bg-amber-500 text-white shadow-sm'
+              : pillId === 'battery_guard_tier3'
+                ? 'bg-green-500 text-white shadow-sm'
+                : 'bg-gray-500 text-white shadow-sm'
+          : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+      }`}
+    >
+      {short}
+    </button>
+  )
+}
+
+// ============================================================================
+// Main Component
+// ============================================================================
+
 export function TierAssignmentStep() {
   const { config, dispatch, setCurrentStep } = useWizard()
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [domainFilter, setDomainFilter] = useState<string | null>(null)
+  const [expandedEntities, setExpandedEntities] = useState<Set<string>>(
+    new Set(),
+  )
+  const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(new Set())
 
   const loadEntities = useCallback(async () => {
     setLoading(true)
     try {
-      const [entities, deviceActions] = await Promise.all([
+      const [entities, deviceActions, areas] = await Promise.all([
         discoverEntities(),
         loadDeviceActions(),
+        discoverAreas(),
       ])
       const assignments = getCurrentAssignments(entities)
 
@@ -68,6 +158,7 @@ export function TierAssignmentStep() {
       dispatch({ type: 'SET_ENTITIES', entities })
       dispatch({ type: 'SET_ASSIGNMENTS', assignments })
       dispatch({ type: 'SET_DEVICE_ACTIONS', deviceActions })
+      dispatch({ type: 'SET_AREAS', areas })
     } finally {
       setLoading(false)
     }
@@ -82,23 +173,23 @@ export function TierAssignmentStep() {
     const current = config.assignments[entityId] || []
 
     if (isActionTier(tierId)) {
-      // T1/T2: toggle independently, but clear T3/Ignore if active
       const withoutExclusive = current.filter(
         (t) => t !== 'battery_guard_tier3' && t !== 'battery_guard_ignore',
       )
 
       if (withoutExclusive.includes(tierId)) {
-        // Remove this tier
         const newTiers = withoutExclusive.filter((t) => t !== tierId)
         dispatch({ type: 'SET_ASSIGNMENT', entityId, labelIds: newTiers })
-        // Also clear action config for this tier
         const actionKey = tierToActionKey(tierId)
-        dispatch({ type: 'SET_DEVICE_ACTION', entityId, tier: actionKey, action: undefined })
+        dispatch({
+          type: 'SET_DEVICE_ACTION',
+          entityId,
+          tier: actionKey,
+          action: undefined,
+        })
       } else {
-        // Add this tier
         const newTiers = [...withoutExclusive, tierId]
         dispatch({ type: 'SET_ASSIGNMENT', entityId, labelIds: newTiers })
-        // Set default action
         const actionKey = tierToActionKey(tierId)
         dispatch({
           type: 'SET_DEVICE_ACTION',
@@ -108,22 +199,106 @@ export function TierAssignmentStep() {
         })
       }
     } else {
-      // T3 or Ignore: exclusive — replaces everything
       if (current.length === 1 && current[0] === tierId) {
-        // Unselect → unassigned
         dispatch({ type: 'SET_ASSIGNMENT', entityId, labelIds: [] })
       } else {
         dispatch({ type: 'SET_ASSIGNMENT', entityId, labelIds: [tierId] })
-        // Clear all action configs
-        dispatch({ type: 'SET_DEVICE_ACTION', entityId, tier: 'tier1', action: undefined })
-        dispatch({ type: 'SET_DEVICE_ACTION', entityId, tier: 'tier2', action: undefined })
+        dispatch({
+          type: 'SET_DEVICE_ACTION',
+          entityId,
+          tier: 'tier1',
+          action: undefined,
+        })
+        dispatch({
+          type: 'SET_DEVICE_ACTION',
+          entityId,
+          tier: 'tier2',
+          action: undefined,
+        })
       }
     }
   }
 
   /** Update action config for an entity + tier */
-  function setAction(entityId: string, tier: 'tier1' | 'tier2', action: ActionConfig) {
+  function setAction(
+    entityId: string,
+    tier: 'tier1' | 'tier2',
+    action: ActionConfig,
+  ) {
     dispatch({ type: 'SET_DEVICE_ACTION', entityId, tier, action })
+    // Auto-collapse if changed back to turn_off
+    if (action.action === 'turn_off') {
+      setExpandedEntities((prev) => {
+        const next = new Set(prev)
+        next.delete(entityId)
+        return next
+      })
+    }
+  }
+
+  function toggleExpanded(entityId: string) {
+    setExpandedEntities((prev) => {
+      const next = new Set(prev)
+      if (next.has(entityId)) next.delete(entityId)
+      else next.add(entityId)
+      return next
+    })
+  }
+
+  function toggleAreaCollapse(areaId: string) {
+    setCollapsedAreas((prev) => {
+      const next = new Set(prev)
+      if (next.has(areaId)) next.delete(areaId)
+      else next.add(areaId)
+      return next
+    })
+  }
+
+  /** Apply bulk action to all entities of the current domain filter */
+  function applyBulkAction(
+    tiers: string[],
+    actions: { tier1?: ActionConfig; tier2?: ActionConfig },
+  ) {
+    const domainEntities = config.entities.filter(
+      (e) => e.domain === domainFilter,
+    )
+    for (const entity of domainEntities) {
+      dispatch({
+        type: 'SET_ASSIGNMENT',
+        entityId: entity.entity_id,
+        labelIds: tiers,
+      })
+      // Clear existing actions first
+      dispatch({
+        type: 'SET_DEVICE_ACTION',
+        entityId: entity.entity_id,
+        tier: 'tier1',
+        action: undefined,
+      })
+      dispatch({
+        type: 'SET_DEVICE_ACTION',
+        entityId: entity.entity_id,
+        tier: 'tier2',
+        action: undefined,
+      })
+      // Set new actions
+      if (actions.tier1 && tiers.includes('battery_guard_tier1')) {
+        dispatch({
+          type: 'SET_DEVICE_ACTION',
+          entityId: entity.entity_id,
+          tier: 'tier1',
+          action: actions.tier1,
+        })
+      }
+      if (actions.tier2 && tiers.includes('battery_guard_tier2')) {
+        dispatch({
+          type: 'SET_DEVICE_ACTION',
+          entityId: entity.entity_id,
+          tier: 'tier2',
+          action: actions.tier2,
+        })
+      }
+    }
   }
 
   // Filtering
@@ -137,7 +312,9 @@ export function TierAssignmentStep() {
   })
 
   const unassignedCount = config.entities.filter(
-    (e) => !config.assignments[e.entity_id] || config.assignments[e.entity_id].length === 0,
+    (e) =>
+      !config.assignments[e.entity_id] ||
+      config.assignments[e.entity_id].length === 0,
   ).length
 
   // Domain counts for filter chips
@@ -149,6 +326,10 @@ export function TierAssignmentStep() {
     {} as Record<string, number>,
   )
 
+  // Area grouping
+  const areaGroups = groupByArea(filteredEntities, config.areas)
+  const showAreaHeaders = areaGroups.length > 1
+
   if (loading) {
     return (
       <div className="text-center py-12 text-gray-500">
@@ -159,6 +340,7 @@ export function TierAssignmentStep() {
 
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">
@@ -178,7 +360,11 @@ export function TierAssignmentStep() {
                 for (const entity of config.entities) {
                   const current = config.assignments[entity.entity_id]
                   if (!current || current.length === 0) {
-                    dispatch({ type: 'SET_ASSIGNMENT', entityId: entity.entity_id, labelIds: ['battery_guard_ignore'] })
+                    dispatch({
+                      type: 'SET_ASSIGNMENT',
+                      entityId: entity.entity_id,
+                      labelIds: ['battery_guard_ignore'],
+                    })
                   }
                 }
               }}
@@ -254,6 +440,25 @@ export function TierAssignmentStep() {
         )}
       </div>
 
+      {/* Bulk action bar (only when domain filter is active) */}
+      {domainFilter && (
+        <BulkActionBar
+          domain={domainFilter}
+          entityCount={domainCounts[domainFilter] || 0}
+          existingCustomCount={
+            config.entities.filter((e) => {
+              if (e.domain !== domainFilter) return false
+              const actions = config.deviceActions[e.entity_id]
+              if (!actions) return false
+              return Object.values(actions).some(
+                (a) => a && a.action !== 'turn_off',
+              )
+            }).length
+          }
+          onApply={applyBulkAction}
+        />
+      )}
+
       {/* Search */}
       <input
         type="text"
@@ -263,20 +468,55 @@ export function TierAssignmentStep() {
         className="w-full px-3 py-2 mb-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
       />
 
-      {/* Entity list */}
-      <div className="space-y-1">
-        {filteredEntities.map((entity) => (
-          <EntityRow
-            key={entity.entity_id}
-            entity={entity}
-            tiers={config.assignments[entity.entity_id] || []}
-            deviceActions={config.deviceActions[entity.entity_id] || {}}
-            onToggleTier={toggleTier}
-            onSetAction={setAction}
-          />
+      {/* Entity list grouped by area */}
+      <div className="space-y-3">
+        {areaGroups.map((group) => (
+          <div key={group.areaId}>
+            {/* Area header (only if multiple areas) */}
+            {showAreaHeaders && (
+              <button
+                onClick={() => toggleAreaCollapse(group.areaId)}
+                className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded mb-1"
+              >
+                <span
+                  className={`text-[10px] text-gray-400 transition-transform ${collapsedAreas.has(group.areaId) ? '' : 'rotate-90'}`}
+                >
+                  ▶
+                </span>
+                {group.areaName}
+                <span className="text-xs text-gray-400 font-normal">
+                  ({group.entities.length})
+                </span>
+              </button>
+            )}
+
+            {/* Entity rows */}
+            {!collapsedAreas.has(group.areaId) && (
+              <div
+                className={`space-y-1 ${showAreaHeaders ? 'ml-3' : ''}`}
+              >
+                {group.entities.map((entity) => (
+                  <EntityRow
+                    key={entity.entity_id}
+                    entity={entity}
+                    tiers={config.assignments[entity.entity_id] || []}
+                    deviceActions={
+                      config.deviceActions[entity.entity_id] || {}
+                    }
+                    isExpanded={expandedEntities.has(entity.entity_id)}
+                    onToggleTier={toggleTier}
+                    onSetAction={setAction}
+                    onToggleExpand={toggleExpanded}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         ))}
         {filteredEntities.length === 0 && (
-          <p className="text-center py-8 text-gray-400">No devices match your filter.</p>
+          <p className="text-center py-8 text-gray-400">
+            No devices match your filter.
+          </p>
         )}
       </div>
 
@@ -304,68 +544,240 @@ export function TierAssignmentStep() {
   )
 }
 
-/** Single entity row with inline tier pill buttons */
+// ============================================================================
+// BulkActionBar — Domain-wide tier+action configuration
+// ============================================================================
+
+function BulkActionBar({
+  domain,
+  entityCount,
+  existingCustomCount,
+  onApply,
+}: {
+  domain: string
+  entityCount: number
+  existingCustomCount: number
+  onApply: (
+    tiers: string[],
+    actions: { tier1?: ActionConfig; tier2?: ActionConfig },
+  ) => void
+}) {
+  const [selectedTiers, setSelectedTiers] = useState<string[]>([])
+  const [tier1Action, setTier1Action] = useState<ActionConfig>({
+    action: 'turn_off',
+  })
+  const [tier2Action, setTier2Action] = useState<ActionConfig>({
+    action: 'turn_off',
+  })
+
+  function toggleBulkTier(tierId: string) {
+    setSelectedTiers((prev) => {
+      if (isActionTier(tierId)) {
+        const withoutExclusive = prev.filter(
+          (t) => t !== 'battery_guard_tier3' && t !== 'battery_guard_ignore',
+        )
+        if (withoutExclusive.includes(tierId)) {
+          return withoutExclusive.filter((t) => t !== tierId)
+        }
+        return [...withoutExclusive, tierId]
+      }
+      // Exclusive tiers
+      if (prev.length === 1 && prev[0] === tierId) return []
+      return [tierId]
+    })
+  }
+
+  const showConfig = hasConfigurableActions(domain)
+  const hasT1 = selectedTiers.includes('battery_guard_tier1')
+  const hasT2 = selectedTiers.includes('battery_guard_tier2')
+
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4">
+      <p className="text-sm font-medium text-amber-900 mb-2">
+        Apply to all {entityCount} {domain} devices:
+      </p>
+      <div className="flex items-center gap-4 flex-wrap">
+        {/* Tier pills */}
+        <div className="flex gap-1">
+          {TIER_PILLS.map((pill) => (
+            <TierPillButton
+              key={pill.id}
+              pillId={pill.id}
+              short={pill.short}
+              isActive={selectedTiers.includes(pill.id)}
+              onClick={() => toggleBulkTier(pill.id)}
+            />
+          ))}
+        </div>
+
+        {/* Action config for T1 */}
+        {showConfig && hasT1 && (
+          <ActionConfigRow
+            domain={domain}
+            tierLabel="T1"
+            tierColor="text-red-600"
+            action={tier1Action}
+            onChange={setTier1Action}
+          />
+        )}
+
+        {/* Action config for T2 */}
+        {showConfig && hasT2 && (
+          <ActionConfigRow
+            domain={domain}
+            tierLabel="T2"
+            tierColor="text-amber-600"
+            action={tier2Action}
+            onChange={setTier2Action}
+          />
+        )}
+      </div>
+
+      {selectedTiers.length > 0 && (
+        <div className="flex items-center gap-3 mt-3">
+          <button
+            onClick={() =>
+              onApply(selectedTiers, {
+                tier1: hasT1 ? tier1Action : undefined,
+                tier2: hasT2 ? tier2Action : undefined,
+              })
+            }
+            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            Apply to all ({entityCount})
+          </button>
+          {existingCustomCount > 0 && (
+            <span className="text-xs text-amber-700">
+              Overwrites {existingCustomCount} custom config
+              {existingCustomCount > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// EntityRow — Single entity with tier pills, compact badges, expandable config
+// ============================================================================
+
 function EntityRow({
   entity,
   tiers,
   deviceActions,
+  isExpanded,
   onToggleTier,
   onSetAction,
+  onToggleExpand,
 }: {
   entity: WizardEntity
   tiers: string[]
   deviceActions: Record<string, ActionConfig>
+  isExpanded: boolean
   onToggleTier: (entityId: string, tierId: string) => void
-  onSetAction: (entityId: string, tier: 'tier1' | 'tier2', action: ActionConfig) => void
+  onSetAction: (
+    entityId: string,
+    tier: 'tier1' | 'tier2',
+    action: ActionConfig,
+  ) => void
+  onToggleExpand: (entityId: string) => void
 }) {
-  const showActionConfig =
-    hasConfigurableActions(entity.domain) &&
-    tiers.some((t) => isActionTier(t))
+  const isConfigurable =
+    hasConfigurableActions(entity.domain) && tiers.some((t) => isActionTier(t))
+
+  // Check if any tier has a non-default action
+  const hasNonDefaultAction = tiers
+    .filter(isActionTier)
+    .some((tierId) => {
+      const actionKey = tierToActionKey(tierId)
+      const action = deviceActions[actionKey]
+      return action && action.action !== 'turn_off'
+    })
+
+  const showActionConfig = isConfigurable && (isExpanded || hasNonDefaultAction)
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
       <div className="flex items-center gap-3">
         {/* Tier pill buttons (left side) */}
         <div className="flex gap-1 shrink-0">
-          {TIER_PILLS.map((pill) => {
-            const isActive = tiers.includes(pill.id)
-            return (
-              <button
-                key={pill.id}
-                onClick={() => onToggleTier(entity.entity_id, pill.id)}
-                title={TIER_DISPLAY[pill.id as keyof typeof TIER_DISPLAY]?.label}
-                className={`w-9 h-8 rounded-md text-xs font-bold transition-all ${
-                  isActive
-                    ? pill.id === 'battery_guard_tier1'
-                      ? 'bg-red-500 text-white shadow-sm'
-                      : pill.id === 'battery_guard_tier2'
-                        ? 'bg-amber-500 text-white shadow-sm'
-                        : pill.id === 'battery_guard_tier3'
-                          ? 'bg-green-500 text-white shadow-sm'
-                          : 'bg-gray-500 text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
-                }`}
-              >
-                {pill.short}
-              </button>
-            )
-          })}
+          {TIER_PILLS.map((pill) => (
+            <TierPillButton
+              key={pill.id}
+              pillId={pill.id}
+              short={pill.short}
+              isActive={tiers.includes(pill.id)}
+              onClick={() => onToggleTier(entity.entity_id, pill.id)}
+            />
+          ))}
         </div>
 
-        {/* Entity info */}
+        {/* Entity info + compact action badges */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+            <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
               {entity.domain}
             </span>
             <p className="text-sm font-medium text-gray-900 truncate">
               {entity.friendly_name}
             </p>
+
+            {/* Compact action badges */}
+            {tiers.filter(isActionTier).map((tierId) => {
+              const actionKey = tierToActionKey(tierId)
+              const action = deviceActions[actionKey]
+              const badge = formatActionBadge(action)
+              if (!badge) return null
+              const tierShort =
+                tierId === 'battery_guard_tier1' ? 'T1' : 'T2'
+              const badgeColor =
+                tierId === 'battery_guard_tier1'
+                  ? 'bg-red-100 text-red-700'
+                  : 'bg-amber-100 text-amber-700'
+              return (
+                <span
+                  key={tierId}
+                  className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badgeColor} whitespace-nowrap shrink-0`}
+                >
+                  {tierShort}:{badge}
+                </span>
+              )
+            })}
+
+            {/* Gear icon to expand/collapse action config */}
+            {isConfigurable && (
+              <button
+                onClick={() => onToggleExpand(entity.entity_id)}
+                className="ml-auto text-gray-400 hover:text-gray-600 p-0.5 shrink-0"
+                title="Configure action"
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Action configuration (only for climate/light in T1/T2) */}
+      {/* Expandable action configuration */}
       {showActionConfig && (
         <div className="mt-2 ml-0 border-t border-gray-100 pt-2">
           <div className="flex flex-wrap gap-3">
@@ -373,10 +785,15 @@ function EntityRow({
               .filter((t) => isActionTier(t))
               .map((tierId) => {
                 const actionKey = tierToActionKey(tierId)
-                const currentAction = deviceActions[actionKey] || { action: 'turn_off' }
-                const tierLabel = tierId === 'battery_guard_tier1' ? 'T1' : 'T2'
+                const currentAction = deviceActions[actionKey] || {
+                  action: 'turn_off',
+                }
+                const tierLabel =
+                  tierId === 'battery_guard_tier1' ? 'T1' : 'T2'
                 const tierColor =
-                  tierId === 'battery_guard_tier1' ? 'text-red-600' : 'text-amber-600'
+                  tierId === 'battery_guard_tier1'
+                    ? 'text-red-600'
+                    : 'text-amber-600'
 
                 return (
                   <ActionConfigRow
@@ -398,7 +815,10 @@ function EntityRow({
   )
 }
 
-/** Inline action configuration for a specific tier */
+// ============================================================================
+// ActionConfigRow — Inline action configuration dropdowns
+// ============================================================================
+
 function ActionConfigRow({
   domain,
   tierLabel,
@@ -412,7 +832,9 @@ function ActionConfigRow({
   action: ActionConfig
   onChange: (action: ActionConfig) => void
 }) {
-  const actions = DOMAIN_ACTIONS[domain] || [{ value: 'turn_off', label: 'Turn off' }]
+  const actions = DOMAIN_ACTIONS[domain] || [
+    { value: 'turn_off', label: 'Turn off' },
+  ]
 
   return (
     <div className="flex items-center gap-2 text-xs">
@@ -423,7 +845,6 @@ function ActionConfigRow({
         value={action.action}
         onChange={(e) => {
           const newAction: ActionConfig = { action: e.target.value }
-          // Set default params for specific actions
           if (e.target.value === 'set_hvac_mode') {
             newAction.hvac_mode = 'fan_only'
           } else if (e.target.value === 'dim') {
@@ -446,9 +867,7 @@ function ActionConfigRow({
       {action.action === 'set_hvac_mode' && (
         <select
           value={(action.hvac_mode as string) || 'fan_only'}
-          onChange={(e) =>
-            onChange({ ...action, hvac_mode: e.target.value })
-          }
+          onChange={(e) => onChange({ ...action, hvac_mode: e.target.value })}
           className="border border-gray-200 rounded px-1.5 py-1 text-xs bg-white"
         >
           {HVAC_MODES.map((m) => (

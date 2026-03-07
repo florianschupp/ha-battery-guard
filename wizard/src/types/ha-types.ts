@@ -36,6 +36,16 @@ export interface HAState {
   last_updated: string
 }
 
+/** Home Assistant area from the area registry */
+export interface HAArea {
+  area_id: string
+  name: string
+  icon: string | null
+  picture: string | null
+  floor_id: string | null
+  labels: string[]
+}
+
 /** Home Assistant notification service */
 export interface HANotifyService {
   domain: string

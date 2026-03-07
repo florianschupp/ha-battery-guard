@@ -9,6 +9,7 @@ const initialConfig: WizardConfig = {
   entities: [],
   assignments: {},
   deviceActions: {},
+  areas: {},
   deployed: false,
 }
 
@@ -52,6 +53,8 @@ function wizardReducer(
     }
     case 'SET_DEVICE_ACTIONS':
       return { ...state, deviceActions: action.deviceActions }
+    case 'SET_AREAS':
+      return { ...state, areas: action.areas }
     case 'SET_DEPLOYED':
       return { ...state, deployed: action.deployed }
     case 'RESET':

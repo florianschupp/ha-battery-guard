@@ -78,6 +78,9 @@ export interface WizardConfig {
   /** Per-device action configurations */
   deviceActions: DeviceActions
 
+  /** Area registry (area_id -> area name) */
+  areas: Record<string, string>
+
   /** Deployment status */
   deployed: boolean
 }
@@ -90,5 +93,6 @@ export type WizardAction =
   | { type: 'SET_ASSIGNMENTS'; assignments: TierAssignment }
   | { type: 'SET_DEVICE_ACTION'; entityId: string; tier: string; action: ActionConfig | undefined }
   | { type: 'SET_DEVICE_ACTIONS'; deviceActions: DeviceActions }
+  | { type: 'SET_AREAS'; areas: Record<string, string> }
   | { type: 'SET_DEPLOYED'; deployed: boolean }
   | { type: 'RESET' }

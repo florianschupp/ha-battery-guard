@@ -4,6 +4,7 @@ import {
   type Connection,
 } from 'home-assistant-js-websocket'
 import type {
+  HAArea,
   HAEntityRegistryEntry,
   HALabel,
 } from '../types/ha-types'
@@ -96,6 +97,15 @@ export async function createLabel(label: {
 /** Delete a label */
 export async function deleteLabel(labelId: string): Promise<void> {
   await sendMessage('config/label_registry/delete', { label_id: labelId })
+}
+
+// ============================================================================
+// Area Registry
+// ============================================================================
+
+/** List all areas */
+export async function listAreas(): Promise<HAArea[]> {
+  return sendMessage<HAArea[]>('config/area_registry/list')
 }
 
 // ============================================================================
