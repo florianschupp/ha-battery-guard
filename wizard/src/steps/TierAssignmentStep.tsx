@@ -3,34 +3,71 @@ import { useWizard } from '../hooks/useWizard'
 import {
   discoverEntities,
   getCurrentAssignments,
+  loadDeviceActions,
 } from '../services/entity-service'
 import { WIZARD_STEPS } from '../types/wizard-types'
+import type { WizardEntity, ActionConfig } from '../types/wizard-types'
 import {
-  BATTERY_GUARD_LABEL_IDS,
+  DOMAIN_ACTIONS,
+  HVAC_MODES,
   TIER_DISPLAY,
+  TRACKED_DOMAINS,
 } from '../lib/constants'
-import type { WizardEntity } from '../types/wizard-types'
+
+/** Tier pill button definitions */
+const TIER_PILLS = [
+  { id: 'battery_guard_tier1', short: 'T1', emoji: '🔴' },
+  { id: 'battery_guard_tier2', short: 'T2', emoji: '🟡' },
+  { id: 'battery_guard_tier3', short: 'T3', emoji: '🟢' },
+  { id: 'battery_guard_ignore', short: '—', emoji: '⚪' },
+] as const
+
+/** Check if a tier is an "action" tier (T1 or T2) */
+function isActionTier(tierId: string): boolean {
+  return tierId === 'battery_guard_tier1' || tierId === 'battery_guard_tier2'
+}
+
+/** Map label_id to device_actions key */
+function tierToActionKey(tierId: string): 'tier1' | 'tier2' {
+  return tierId === 'battery_guard_tier1' ? 'tier1' : 'tier2'
+}
+
+/** Check if a domain has configurable actions (beyond just turn_off) */
+function hasConfigurableActions(domain: string): boolean {
+  const actions = DOMAIN_ACTIONS[domain]
+  return !!actions && actions.length > 1
+}
+
+/** Get the default action for a domain */
+function getDefaultAction(): ActionConfig {
+  return { action: 'turn_off' }
+}
 
 export function TierAssignmentStep() {
   const { config, dispatch, setCurrentStep } = useWizard()
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [domainFilter, setDomainFilter] = useState<string | null>(null)
 
   const loadEntities = useCallback(async () => {
     setLoading(true)
     try {
-      const entities = await discoverEntities()
+      const [entities, deviceActions] = await Promise.all([
+        discoverEntities(),
+        loadDeviceActions(),
+      ])
       const assignments = getCurrentAssignments(entities)
 
       // Pre-fill with recommendations where no assignment exists
       for (const entity of entities) {
         if (!assignments[entity.entity_id] && entity.recommended_tier) {
-          assignments[entity.entity_id] = entity.recommended_tier
+          assignments[entity.entity_id] = [entity.recommended_tier]
         }
       }
 
       dispatch({ type: 'SET_ENTITIES', entities })
       dispatch({ type: 'SET_ASSIGNMENTS', assignments })
+      dispatch({ type: 'SET_DEVICE_ACTIONS', deviceActions })
     } finally {
       setLoading(false)
     }
@@ -40,30 +77,78 @@ export function TierAssignmentStep() {
     loadEntities()
   }, [loadEntities])
 
-  function assignEntity(entityId: string, tierId: string) {
-    dispatch({ type: 'SET_ASSIGNMENT', entityId, labelId: tierId })
+  /** Toggle a tier for an entity */
+  function toggleTier(entityId: string, tierId: string) {
+    const current = config.assignments[entityId] || []
+
+    if (isActionTier(tierId)) {
+      // T1/T2: toggle independently, but clear T3/Ignore if active
+      const withoutExclusive = current.filter(
+        (t) => t !== 'battery_guard_tier3' && t !== 'battery_guard_ignore',
+      )
+
+      if (withoutExclusive.includes(tierId)) {
+        // Remove this tier
+        const newTiers = withoutExclusive.filter((t) => t !== tierId)
+        dispatch({ type: 'SET_ASSIGNMENT', entityId, labelIds: newTiers })
+        // Also clear action config for this tier
+        const actionKey = tierToActionKey(tierId)
+        dispatch({ type: 'SET_DEVICE_ACTION', entityId, tier: actionKey, action: undefined })
+      } else {
+        // Add this tier
+        const newTiers = [...withoutExclusive, tierId]
+        dispatch({ type: 'SET_ASSIGNMENT', entityId, labelIds: newTiers })
+        // Set default action
+        const actionKey = tierToActionKey(tierId)
+        dispatch({
+          type: 'SET_DEVICE_ACTION',
+          entityId,
+          tier: actionKey,
+          action: getDefaultAction(),
+        })
+      }
+    } else {
+      // T3 or Ignore: exclusive — replaces everything
+      if (current.length === 1 && current[0] === tierId) {
+        // Unselect → unassigned
+        dispatch({ type: 'SET_ASSIGNMENT', entityId, labelIds: [] })
+      } else {
+        dispatch({ type: 'SET_ASSIGNMENT', entityId, labelIds: [tierId] })
+        // Clear all action configs
+        dispatch({ type: 'SET_DEVICE_ACTION', entityId, tier: 'tier1', action: undefined })
+        dispatch({ type: 'SET_DEVICE_ACTION', entityId, tier: 'tier2', action: undefined })
+      }
+    }
   }
 
+  /** Update action config for an entity + tier */
+  function setAction(entityId: string, tier: 'tier1' | 'tier2', action: ActionConfig) {
+    dispatch({ type: 'SET_DEVICE_ACTION', entityId, tier, action })
+  }
+
+  // Filtering
   const filteredEntities = config.entities.filter((e) => {
+    const matchesDomain = !domainFilter || e.domain === domainFilter
     const matchesSearch =
       !search ||
       e.entity_id.toLowerCase().includes(search.toLowerCase()) ||
       e.friendly_name.toLowerCase().includes(search.toLowerCase())
-    return matchesSearch
+    return matchesDomain && matchesSearch
   })
 
-  function getEntitiesForTier(tierId: string): WizardEntity[] {
-    return filteredEntities.filter(
-      (e) => config.assignments[e.entity_id] === tierId,
-    )
-  }
+  const unassignedCount = config.entities.filter(
+    (e) => !config.assignments[e.entity_id] || config.assignments[e.entity_id].length === 0,
+  ).length
 
-  const unassigned = filteredEntities.filter(
-    (e) => !config.assignments[e.entity_id],
-  )
+  const allAssigned = unassignedCount === 0
 
-  const allAssigned = config.entities.every(
-    (e) => config.assignments[e.entity_id],
+  // Domain counts for filter chips
+  const domainCounts = (TRACKED_DOMAINS as readonly string[]).reduce(
+    (acc, d) => {
+      acc[d] = config.entities.filter((e) => e.domain === d).length
+      return acc
+    },
+    {} as Record<string, number>,
   )
 
   if (loading) {
@@ -83,8 +168,8 @@ export function TierAssignmentStep() {
           </h2>
           <p className="text-gray-600">
             {config.entities.length} devices found.{' '}
-            {unassigned.length > 0
-              ? `${unassigned.length} unassigned.`
+            {unassignedCount > 0
+              ? `${unassignedCount} unassigned.`
               : 'All assigned!'}
           </p>
         </div>
@@ -104,28 +189,55 @@ export function TierAssignmentStep() {
         </p>
         <ul className="space-y-0.5 text-blue-700">
           <li>
-            <span className="font-medium">Tier 1</span> — Turned off
-            immediately when a power outage is detected (e.g. HVAC, EV
-            charger)
+            <span className="font-medium">T1</span> — Action on power outage
+            (e.g. HVAC to fan mode, EV charger off)
           </li>
           <li>
-            <span className="font-medium">Tier 2</span> — Turned off when
-            battery drops below the configured threshold (e.g. lights,
-            refrigerators)
+            <span className="font-medium">T2</span> — Action when battery drops
+            below threshold (e.g. lights dim, appliances off)
           </li>
           <li>
-            <span className="font-medium">Tier 3</span> — Never turned off,
-            stays on as long as battery lasts (e.g. network, Home Assistant)
+            <span className="font-medium">T3</span> — Never turned off, stays
+            on as long as battery lasts
           </li>
           <li>
-            <span className="font-medium">Ignore</span> — Excluded from
-            Battery Guard, no action taken
+            <span className="font-medium">—</span> — Ignored, excluded from
+            Battery Guard
           </li>
         </ul>
         <p className="mt-1.5 text-blue-600">
-          Click &quot;Assign&quot; on each device to select a tier. All
-          devices must be assigned before you can continue.
+          Climate and light devices can be in both T1 and T2 with different
+          actions (e.g. fan mode in T1, off in T2).
         </p>
+      </div>
+
+      {/* Domain filter chips */}
+      <div className="flex flex-wrap gap-2 mb-3">
+        <button
+          onClick={() => setDomainFilter(null)}
+          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            !domainFilter
+              ? 'bg-amber-500 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          All ({config.entities.length})
+        </button>
+        {(TRACKED_DOMAINS as readonly string[]).map((d) =>
+          domainCounts[d] > 0 ? (
+            <button
+              key={d}
+              onClick={() => setDomainFilter(domainFilter === d ? null : d)}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                domainFilter === d
+                  ? 'bg-amber-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {d} ({domainCounts[d]})
+            </button>
+          ) : null,
+        )}
       </div>
 
       {/* Search */}
@@ -137,62 +249,39 @@ export function TierAssignmentStep() {
         className="w-full px-3 py-2 mb-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
       />
 
-      {/* Unassigned */}
-      {unassigned.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">
-            Unassigned ({unassigned.length})
-          </h3>
-          <div className="space-y-1">
-            {unassigned.map((entity) => (
-              <EntityRow
-                key={entity.entity_id}
-                entity={entity}
-                onAssign={assignEntity}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Entity list */}
+      <div className="space-y-1">
+        {filteredEntities.map((entity) => (
+          <EntityRow
+            key={entity.entity_id}
+            entity={entity}
+            tiers={config.assignments[entity.entity_id] || []}
+            deviceActions={config.deviceActions[entity.entity_id] || {}}
+            onToggleTier={toggleTier}
+            onSetAction={setAction}
+          />
+        ))}
+        {filteredEntities.length === 0 && (
+          <p className="text-center py-8 text-gray-400">No devices match your filter.</p>
+        )}
+      </div>
 
-      {/* Tier columns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {BATTERY_GUARD_LABEL_IDS.map((tierId) => {
-          const display =
-            TIER_DISPLAY[tierId as keyof typeof TIER_DISPLAY]
-          const tierEntities = getEntitiesForTier(tierId)
-
+      {/* Tier summary at bottom */}
+      <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+        {Object.entries(TIER_DISPLAY).map(([tierId, display]) => {
+          const count = Object.values(config.assignments).filter((tiers) =>
+            tiers.includes(tierId),
+          ).length
           return (
             <div
               key={tierId}
-              className="border border-gray-200 rounded-lg bg-white"
+              className="bg-white border border-gray-200 rounded-lg p-3 text-center"
             >
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span>{display?.emoji}</span>
-                  <span className="font-medium text-sm">
-                    {display?.label}
-                  </span>
-                </div>
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                  {tierEntities.length}
-                </span>
+              <div className="text-lg">{display.emoji}</div>
+              <div className="text-xs font-medium text-gray-600 mt-1">
+                {display.label.split(' — ')[0]}
               </div>
-              <div className="p-2 max-h-64 overflow-y-auto space-y-1">
-                {tierEntities.length === 0 && (
-                  <p className="text-xs text-gray-400 text-center py-2">
-                    No devices
-                  </p>
-                )}
-                {tierEntities.map((entity) => (
-                  <EntityRow
-                    key={entity.entity_id}
-                    entity={entity}
-                    onAssign={assignEntity}
-                    compact
-                  />
-                ))}
-              </div>
+              <div className="text-xl font-bold text-gray-900">{count}</div>
             </div>
           )
         })}
@@ -201,61 +290,198 @@ export function TierAssignmentStep() {
   )
 }
 
+/** Single entity row with inline tier pill buttons */
 function EntityRow({
   entity,
-  onAssign,
-  compact = false,
+  tiers,
+  deviceActions,
+  onToggleTier,
+  onSetAction,
 }: {
   entity: WizardEntity
-  onAssign: (entityId: string, tierId: string) => void
-  compact?: boolean
+  tiers: string[]
+  deviceActions: Record<string, ActionConfig>
+  onToggleTier: (entityId: string, tierId: string) => void
+  onSetAction: (entityId: string, tier: 'tier1' | 'tier2', action: ActionConfig) => void
 }) {
-  const [showPicker, setShowPicker] = useState(false)
+  const showActionConfig =
+    hasConfigurableActions(entity.domain) &&
+    tiers.some((t) => isActionTier(t))
 
   return (
-    <div
-      className={`flex items-center justify-between rounded-md hover:bg-gray-50 ${
-        compact ? 'px-2 py-1.5' : 'px-3 py-2 bg-white border border-gray-200'
-      }`}
-    >
-      <div className="min-w-0 flex-1">
-        <p
-          className={`font-medium text-gray-900 truncate ${compact ? 'text-xs' : 'text-sm'}`}
-        >
-          {entity.friendly_name}
-        </p>
-        <p className="text-xs text-gray-400 truncate">{entity.entity_id}</p>
+    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+      <div className="flex items-center gap-3">
+        {/* Entity info */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+              {entity.domain}
+            </span>
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {entity.friendly_name}
+            </p>
+          </div>
+        </div>
+
+        {/* Tier pill buttons */}
+        <div className="flex gap-1 shrink-0">
+          {TIER_PILLS.map((pill) => {
+            const isActive = tiers.includes(pill.id)
+            return (
+              <button
+                key={pill.id}
+                onClick={() => onToggleTier(entity.entity_id, pill.id)}
+                title={TIER_DISPLAY[pill.id as keyof typeof TIER_DISPLAY]?.label}
+                className={`w-9 h-8 rounded-md text-xs font-bold transition-all ${
+                  isActive
+                    ? pill.id === 'battery_guard_tier1'
+                      ? 'bg-red-500 text-white shadow-sm'
+                      : pill.id === 'battery_guard_tier2'
+                        ? 'bg-amber-500 text-white shadow-sm'
+                        : pill.id === 'battery_guard_tier3'
+                          ? 'bg-green-500 text-white shadow-sm'
+                          : 'bg-gray-500 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+                }`}
+              >
+                {pill.short}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
-      <div className="relative ml-2">
-        <button
-          onClick={() => setShowPicker(!showPicker)}
-          className="text-xs px-2 py-1 border border-gray-200 rounded hover:bg-gray-100"
-        >
-          Assign
-        </button>
-        {showPicker && (
-          <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 w-48">
-            {BATTERY_GUARD_LABEL_IDS.map((tierId) => {
-              const display =
-                TIER_DISPLAY[tierId as keyof typeof TIER_DISPLAY]
-              return (
-                <button
-                  key={tierId}
-                  onClick={() => {
-                    onAssign(entity.entity_id, tierId)
-                    setShowPicker(false)
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 flex items-center gap-2"
-                >
-                  <span>{display?.emoji}</span>
-                  <span>{display?.label}</span>
-                </button>
-              )
-            })}
+      {/* Action configuration (only for climate/light in T1/T2) */}
+      {showActionConfig && (
+        <div className="mt-2 ml-0 border-t border-gray-100 pt-2">
+          <div className="flex flex-wrap gap-3">
+            {tiers
+              .filter((t) => isActionTier(t))
+              .map((tierId) => {
+                const actionKey = tierToActionKey(tierId)
+                const currentAction = deviceActions[actionKey] || { action: 'turn_off' }
+                const tierLabel = tierId === 'battery_guard_tier1' ? 'T1' : 'T2'
+                const tierColor =
+                  tierId === 'battery_guard_tier1' ? 'text-red-600' : 'text-amber-600'
+
+                return (
+                  <ActionConfigRow
+                    key={tierId}
+                    domain={entity.domain}
+                    tierLabel={tierLabel}
+                    tierColor={tierColor}
+                    action={currentAction}
+                    onChange={(action) =>
+                      onSetAction(entity.entity_id, actionKey, action)
+                    }
+                  />
+                )
+              })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Inline action configuration for a specific tier */
+function ActionConfigRow({
+  domain,
+  tierLabel,
+  tierColor,
+  action,
+  onChange,
+}: {
+  domain: string
+  tierLabel: string
+  tierColor: string
+  action: ActionConfig
+  onChange: (action: ActionConfig) => void
+}) {
+  const actions = DOMAIN_ACTIONS[domain] || [{ value: 'turn_off', label: 'Turn off' }]
+
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className={`font-bold ${tierColor}`}>{tierLabel}:</span>
+
+      {/* Action select */}
+      <select
+        value={action.action}
+        onChange={(e) => {
+          const newAction: ActionConfig = { action: e.target.value }
+          // Set default params for specific actions
+          if (e.target.value === 'set_hvac_mode') {
+            newAction.hvac_mode = 'fan_only'
+          } else if (e.target.value === 'dim') {
+            newAction.brightness_pct = 20
+          } else if (e.target.value === 'set_temperature') {
+            newAction.temperature = 18
+          }
+          onChange(newAction)
+        }}
+        className="border border-gray-200 rounded px-1.5 py-1 text-xs bg-white"
+      >
+        {actions.map((a) => (
+          <option key={a.value} value={a.value}>
+            {a.label}
+          </option>
+        ))}
+      </select>
+
+      {/* HVAC mode param */}
+      {action.action === 'set_hvac_mode' && (
+        <select
+          value={(action.hvac_mode as string) || 'fan_only'}
+          onChange={(e) =>
+            onChange({ ...action, hvac_mode: e.target.value })
+          }
+          className="border border-gray-200 rounded px-1.5 py-1 text-xs bg-white"
+        >
+          {HVAC_MODES.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {/* Temperature param */}
+      {action.action === 'set_temperature' && (
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min={10}
+            max={35}
+            step={0.5}
+            value={(action.temperature as number) || 18}
+            onChange={(e) =>
+              onChange({ ...action, temperature: parseFloat(e.target.value) })
+            }
+            className="w-14 border border-gray-200 rounded px-1.5 py-1 text-xs bg-white"
+          />
+          <span className="text-gray-400">°C</span>
+        </div>
+      )}
+
+      {/* Brightness param */}
+      {action.action === 'dim' && (
+        <div className="flex items-center gap-1">
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={(action.brightness_pct as number) || 20}
+            onChange={(e) =>
+              onChange({
+                ...action,
+                brightness_pct: parseInt(e.target.value, 10),
+              })
+            }
+            className="w-14 border border-gray-200 rounded px-1.5 py-1 text-xs bg-white"
+          />
+          <span className="text-gray-400">%</span>
+        </div>
+      )}
     </div>
   )
 }

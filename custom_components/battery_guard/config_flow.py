@@ -12,20 +12,21 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
-    DOMAIN,
-    CONF_SOC_SENSOR,
+    CONF_CRITICAL_SOC,
+    CONF_DEVICE_ACTIONS,
     CONF_GRID_SENSOR,
+    CONF_NOTIFY_SERVICES,
+    CONF_RECOVERY_THRESHOLD,
+    CONF_SOC_SENSOR,
+    CONF_TIER2_THRESHOLD,
     CONF_USE_VOLTAGE,
     CONF_VOLTAGE_PHASE_A,
     CONF_VOLTAGE_PHASE_B,
     CONF_VOLTAGE_PHASE_C,
-    CONF_TIER2_THRESHOLD,
-    CONF_RECOVERY_THRESHOLD,
-    CONF_CRITICAL_SOC,
-    CONF_NOTIFY_SERVICES,
-    DEFAULT_TIER2_THRESHOLD,
-    DEFAULT_TIER2_RECOVERY_THRESHOLD,
     DEFAULT_CRITICAL_SOC,
+    DEFAULT_TIER2_RECOVERY_THRESHOLD,
+    DEFAULT_TIER2_THRESHOLD,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,7 +40,34 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
     so the integration can be installed before Modbus is set up.
     """
 
-    VERSION = 1
+    VERSION = 2
+
+    @staticmethod
+    async def async_migrate_entry(hass, config_entry) -> bool:
+        """Migrate config entry from older versions.
+
+        v1 → v2: Initialize device_actions in options.
+        Existing label-based tier assignments are preserved.
+        Entities without explicit device_actions fall back to turn_off.
+        """
+        _LOGGER.info(
+            "Migrating Battery Guard config entry from version %s",
+            config_entry.version,
+        )
+
+        if config_entry.version < 2:
+            new_options = {
+                **config_entry.options,
+                CONF_DEVICE_ACTIONS: config_entry.options.get(
+                    CONF_DEVICE_ACTIONS, {}
+                ),
+            }
+            hass.config_entries.async_update_entry(
+                config_entry, options=new_options, version=2
+            )
+            _LOGGER.info("Migration to version 2 complete")
+
+        return True
 
     def __init__(self) -> None:
         """Initialize the config flow."""

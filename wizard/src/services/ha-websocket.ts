@@ -150,3 +150,24 @@ export async function callService(
 export async function listServices(): Promise<Record<string, Record<string, unknown>>> {
   return sendMessage('get_services')
 }
+
+// ============================================================================
+// Battery Guard Custom API
+// ============================================================================
+
+/** Get per-device action configurations from the integration */
+export async function getDeviceActions(): Promise<Record<string, unknown>> {
+  const result = await sendMessage<{ device_actions: Record<string, unknown> }>(
+    'battery_guard/get_device_actions',
+  )
+  return result.device_actions
+}
+
+/** Save per-device action configurations to the integration */
+export async function setDeviceActions(
+  deviceActions: Record<string, unknown>,
+): Promise<void> {
+  await sendMessage('battery_guard/set_device_actions', {
+    device_actions: deviceActions,
+  })
+}

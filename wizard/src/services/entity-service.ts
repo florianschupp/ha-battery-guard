@@ -1,11 +1,14 @@
-import { listEntities, updateEntity, getStates } from './ha-websocket'
+import { listEntities, updateEntity, getStates, getDeviceActions } from './ha-websocket'
 import {
   TRACKED_DOMAINS,
   BATTERY_GUARD_LABEL_IDS,
   LABEL_MIGRATION_MAP,
 } from '../lib/constants'
 import { getRecommendation } from '../lib/entity-recommendations'
-import type { WizardEntity, TierAssignment } from '../types/wizard-types'
+import type { WizardEntity, TierAssignment, DeviceActions } from '../types/wizard-types'
+
+/** Battery Guard integration domain — used to filter out own entities */
+const BATTERY_GUARD_PLATFORM = 'battery_guard'
 
 /** Fetch all switchable entities with their current tier assignments */
 export async function discoverEntities(): Promise<WizardEntity[]> {
@@ -25,6 +28,8 @@ export async function discoverEntities(): Promise<WizardEntity[]> {
 
   return registryEntries
     .filter((entry) => {
+      // Exclude Battery Guard's own entities
+      if (entry.platform === BATTERY_GUARD_PLATFORM) return false
       const domain = entry.entity_id.split('.')[0]
       return (TRACKED_DOMAINS as readonly string[]).includes(domain)
     })
@@ -53,26 +58,30 @@ export async function discoverEntities(): Promise<WizardEntity[]> {
     })
 }
 
-/** Get current tier assignments from entity labels */
+/**
+ * Get current tier assignments from entity labels.
+ * Returns multi-label assignments (entity can be in T1 + T2).
+ */
 export function getCurrentAssignments(
   entities: WizardEntity[],
 ): TierAssignment {
   const assignments: TierAssignment = {}
 
   for (const entity of entities) {
+    const labels: string[] = []
+
     // Check for current English labels
-    const currentLabel = entity.labels.find((l) =>
-      BATTERY_GUARD_LABEL_IDS.includes(l),
-    )
-    if (currentLabel) {
-      assignments[entity.entity_id] = currentLabel
-      continue
+    for (const l of entity.labels) {
+      if (BATTERY_GUARD_LABEL_IDS.includes(l)) {
+        labels.push(l)
+      } else if (l in LABEL_MIGRATION_MAP) {
+        // Legacy German label → migrate to English
+        labels.push(LABEL_MIGRATION_MAP[l])
+      }
     }
 
-    // Check for legacy German labels and migrate
-    const legacyLabel = entity.labels.find((l) => l in LABEL_MIGRATION_MAP)
-    if (legacyLabel) {
-      assignments[entity.entity_id] = LABEL_MIGRATION_MAP[legacyLabel]
+    if (labels.length > 0) {
+      assignments[entity.entity_id] = labels
     }
   }
 
@@ -80,7 +89,21 @@ export function getCurrentAssignments(
 }
 
 /**
+ * Load device actions from the integration's config entry.
+ * Returns empty object if the WebSocket command is not available (pre-v2.0.0).
+ */
+export async function loadDeviceActions(): Promise<DeviceActions> {
+  try {
+    return (await getDeviceActions()) as DeviceActions
+  } catch {
+    // Integration might not support this command yet (pre-v2.0.0)
+    return {}
+  }
+}
+
+/**
  * Apply tier assignments to entities via the HA entity registry.
+ * Supports multi-label: an entity can have multiple Battery Guard labels.
  * Preserves non-Battery-Guard labels on each entity.
  */
 export async function applyAssignments(
@@ -91,8 +114,8 @@ export async function applyAssignments(
   const failed: string[] = []
 
   for (const entity of entities) {
-    const newTier = assignments[entity.entity_id]
-    if (!newTier) continue
+    const newTiers = assignments[entity.entity_id]
+    if (!newTiers || newTiers.length === 0) continue
 
     // Preserve labels that aren't Battery Guard related
     const preservedLabels = entity.labels.filter(
@@ -100,7 +123,7 @@ export async function applyAssignments(
         !BATTERY_GUARD_LABEL_IDS.includes(l) && !(l in LABEL_MIGRATION_MAP),
     )
 
-    const newLabels = [...preservedLabels, newTier]
+    const newLabels = [...preservedLabels, ...newTiers]
 
     try {
       await updateEntity(entity.entity_id, { labels: newLabels })

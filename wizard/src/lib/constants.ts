@@ -63,6 +63,38 @@ export const TRACKED_DOMAINS = [
 export const DEFAULT_TIER2_THRESHOLD = 30
 export const DEFAULT_TIER2_RECOVERY_THRESHOLD = 40
 
+/**
+ * Available actions per domain.
+ * Mirrors DOMAIN_ACTIONS in Python const.py.
+ */
+export const DOMAIN_ACTIONS: Record<string, { value: string; label: string }[]> = {
+  switch: [
+    { value: 'turn_off', label: 'Turn off' },
+  ],
+  climate: [
+    { value: 'set_hvac_mode', label: 'Set HVAC mode' },
+    { value: 'set_temperature', label: 'Set temperature' },
+    { value: 'turn_off', label: 'Turn off' },
+  ],
+  light: [
+    { value: 'dim', label: 'Dim' },
+    { value: 'turn_off', label: 'Turn off' },
+  ],
+  media_player: [
+    { value: 'turn_off', label: 'Turn off' },
+  ],
+}
+
+/** HVAC modes for climate action config */
+export const HVAC_MODES = [
+  { value: 'fan_only', label: 'Fan only' },
+  { value: 'heat', label: 'Heat' },
+  { value: 'cool', label: 'Cool' },
+  { value: 'auto', label: 'Auto' },
+  { value: 'dry', label: 'Dry' },
+  { value: 'off', label: 'Off' },
+]
+
 /** Tier display info */
 export const TIER_DISPLAY = {
   battery_guard_tier1: {

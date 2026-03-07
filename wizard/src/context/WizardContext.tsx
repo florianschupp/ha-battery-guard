@@ -8,6 +8,7 @@ const initialConfig: WizardConfig = {
   connected: false,
   entities: [],
   assignments: {},
+  deviceActions: {},
   deployed: false,
 }
 
@@ -27,11 +28,30 @@ function wizardReducer(
         ...state,
         assignments: {
           ...state.assignments,
-          [action.entityId]: action.labelId,
+          [action.entityId]: action.labelIds,
         },
       }
     case 'SET_ASSIGNMENTS':
       return { ...state, assignments: action.assignments }
+    case 'SET_DEVICE_ACTION': {
+      const entityActions = { ...state.deviceActions[action.entityId] }
+      if (action.action) {
+        entityActions[action.tier as 'tier1' | 'tier2'] = action.action
+      } else {
+        delete entityActions[action.tier as 'tier1' | 'tier2']
+      }
+      // Clean up empty entity entries
+      const hasActions = Object.keys(entityActions).length > 0
+      const newDeviceActions = { ...state.deviceActions }
+      if (hasActions) {
+        newDeviceActions[action.entityId] = entityActions
+      } else {
+        delete newDeviceActions[action.entityId]
+      }
+      return { ...state, deviceActions: newDeviceActions }
+    }
+    case 'SET_DEVICE_ACTIONS':
+      return { ...state, deviceActions: action.deviceActions }
     case 'SET_DEPLOYED':
       return { ...state, deployed: action.deployed }
     case 'RESET':

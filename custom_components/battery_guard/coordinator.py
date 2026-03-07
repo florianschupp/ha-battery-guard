@@ -41,8 +41,11 @@ class BatteryGuardCoordinator(DataUpdateCoordinator):
                 assigned_ids.add(entry.entity_id)
 
         # Find unassigned entities in tracked domains
+        # Exclude Battery Guard's own entities (sensors, switches, numbers)
         unassigned: list[str] = []
         for entry in registry.entities.values():
+            if entry.platform == DOMAIN:
+                continue
             domain = entry.entity_id.split(".")[0]
             if domain in TRACKED_DOMAINS and not entry.disabled_by:
                 if entry.entity_id not in assigned_ids:

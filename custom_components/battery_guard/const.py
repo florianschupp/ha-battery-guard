@@ -3,7 +3,7 @@
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "1.2.0"
+VERSION = "2.0.0"
 
 # Platforms
 PLATFORMS = [
@@ -68,3 +68,12 @@ CONF_TIER2_THRESHOLD = "tier2_threshold"
 CONF_RECOVERY_THRESHOLD = "recovery_threshold"
 CONF_CRITICAL_SOC = "critical_soc"
 CONF_NOTIFY_SERVICES = "notify_services"
+CONF_DEVICE_ACTIONS = "device_actions"
+
+# Valid actions per entity domain
+DOMAIN_ACTIONS: dict[str, list[str]] = {
+    "switch": ["turn_off"],
+    "climate": ["set_hvac_mode", "set_temperature", "turn_off"],
+    "light": ["dim", "turn_off"],
+    "media_player": ["turn_off"],
+}

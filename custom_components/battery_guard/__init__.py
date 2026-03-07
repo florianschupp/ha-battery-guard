@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, PLATFORMS
+from .state_store import StateStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,6 +36,10 @@ async def async_setup_entry(
     label_map = await async_ensure_labels(hass)
     hass.data[DOMAIN]["label_map"] = label_map
 
+    # Initialize state store for saving/restoring device states
+    state_store = StateStore(hass)
+    hass.data[DOMAIN]["state_store"] = state_store
+
     # Set up coordinator for unassigned device counting
     from .coordinator import BatteryGuardCoordinator
 
@@ -49,6 +54,11 @@ async def async_setup_entry(
     from .services import async_setup_services
 
     await async_setup_services(hass, entry)
+
+    # Register WebSocket API for wizard frontend
+    from .websocket_api import async_register_websocket_api
+
+    async_register_websocket_api(hass, entry)
 
     # Start automation engine
     from .automation_engine import BatteryGuardAutomationEngine
