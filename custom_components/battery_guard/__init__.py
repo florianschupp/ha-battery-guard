@@ -7,12 +7,56 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, PLATFORMS
+from .const import (
+    CONF_DEVICE_ACTIONS,
+    CONF_RESTORE_CONFIG,
+    DEFAULT_RESTORE_CONFIG,
+    DOMAIN,
+    PLATFORMS,
+)
 from .state_store import StateStore
 
 _LOGGER = logging.getLogger(__name__)
 
 type BatteryGuardConfigEntry = ConfigEntry
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, config_entry: ConfigEntry
+) -> bool:
+    """Migrate config entry from older versions.
+
+    v1 → v2: Initialize device_actions in options.
+    v2 → v3: Initialize restore_config in options.
+    """
+    _LOGGER.info(
+        "Migrating Battery Guard config entry from version %s",
+        config_entry.version,
+    )
+
+    if config_entry.version < 2:
+        new_options = {
+            **config_entry.options,
+            CONF_DEVICE_ACTIONS: config_entry.options.get(CONF_DEVICE_ACTIONS, {}),
+        }
+        hass.config_entries.async_update_entry(
+            config_entry, options=new_options, version=2
+        )
+        _LOGGER.info("Migration to version 2 complete")
+
+    if config_entry.version < 3:
+        new_options = {
+            **config_entry.options,
+            CONF_RESTORE_CONFIG: config_entry.options.get(
+                CONF_RESTORE_CONFIG, DEFAULT_RESTORE_CONFIG
+            ),
+        }
+        hass.config_entries.async_update_entry(
+            config_entry, options=new_options, version=3
+        )
+        _LOGGER.info("Migration to version 3 complete")
+
+    return True
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
