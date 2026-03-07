@@ -10,30 +10,40 @@
 
 Battery Guard monitors your PV battery system and automatically manages non-essential devices in tiers when a power outage is detected, preserving battery power for critical loads.
 
+---
+
 ## Features
 
-- **3-tier device priority system** — Assign devices to tiers based on importance
-- **Graduated emergency actions** — Per-device, per-tier actions: set HVAC mode, dim lights, set temperature, or turn off
-- **Automatic power outage detection** — Via grid status sensor or voltage monitoring (Shelly 3EM)
-- **SOC-based tier management** — Tier 2 actions execute when battery drops below threshold
-- **State save & restore** — Device states are automatically captured and fully restored when grid returns
-- **Hysteresis control** — Separate shutdown and recovery thresholds prevent oscillation
-- **Critical battery alerts** — Notifications when battery reaches critical levels
-- **Built-in device wizard** — Sidebar panel with inline tier assignment and domain-aware action configuration
-- **Flexible notifications** — Persistent notifications + configurable notification services
+| | Feature | Description |
+|---|---------|-------------|
+| ⚡ | **3-tier priority system** | Assign devices to tiers based on importance |
+| 🎛️ | **Graduated emergency actions** | Per-device, per-tier actions: set HVAC mode, dim lights, set temperature, or turn off |
+| 🔌 | **Automatic outage detection** | Via grid status sensor or voltage monitoring (Shelly 3EM) |
+| 🔋 | **SOC-based tier management** | Tier 2 actions execute when battery drops below threshold |
+| 💾 | **State save & restore** | Device states are captured before action and fully restored when grid returns |
+| 📈 | **Hysteresis control** | Separate shutdown and recovery thresholds prevent oscillation |
+| 🔔 | **Flexible notifications** | Push notifications + persistent HA notifications |
+| 🧙 | **Built-in device wizard** | Sidebar panel with inline tier buttons and domain-aware action config |
+
+---
 
 ## How It Works
 
-When a power outage is detected:
+```
+Power Outage ──► Tier 1 actions execute (HVAC → fan mode, EV charger off)
+                     │
+Battery < 30% ──► Tier 2 actions execute (lights dim, appliances off)
+                     │
+Battery > 40% ──► Tier 2 devices restored
+                     │
+Grid Restored ──► All devices restored to pre-outage state
+```
 
-1. **Immediately**: Tier 1 actions execute (e.g., HVAC switches to fan-only mode, EV charger turns off)
-2. **Battery below threshold** (default 30%): Tier 2 actions execute (e.g., lights dim or turn off, appliances shut down)
-3. **Battery recovers** (default 40%): Tier 2 devices are restored to their original state
-4. **Grid restored**: All devices are restored to their pre-outage state automatically
+**Tier 3** devices (router, security cameras, freezer) are never turned off.
 
-**Tier 3** devices (e.g., internet router, security cameras, freezer) are never turned off. You decide which devices go into which tier and what action each device should take.
+Devices can be in **multiple tiers** with different actions. Example: an air conditioner switches to fan-only mode in Tier 1 and turns off completely in Tier 2.
 
-Devices can be in multiple tiers with different actions. For example, an air conditioner can switch to fan-only mode in Tier 1 and turn off completely in Tier 2.
+---
 
 ## Installation
 
@@ -52,58 +62,83 @@ Devices can be in multiple tiers with different actions. For example, an air con
 2. Restart Home Assistant
 3. Add the integration via **Settings → Devices & Services**
 
+---
+
 ## Configuration
 
 ### Initial Setup
 
-The config flow guides you through 4 steps:
+The config flow guides you through:
 
-1. **Battery SOC Sensor** — Select your battery state-of-charge sensor *(optional — add later if Modbus is not set up yet)*
-2. **Grid Connection** — Choose grid status sensor or voltage monitoring *(optional)*
-3. **Thresholds** — Set tier 2 shutdown (default 30%), recovery (default 40%), and critical (default 10%) levels
-4. **Notifications** — Select notification services for alerts
+| Step | What | Required? |
+|------|------|-----------|
+| 1 | **Battery SOC Sensor** — your battery state-of-charge sensor | Optional* |
+| 2 | **Grid Connection** — grid status sensor or voltage monitoring | Optional* |
+| 3 | **Thresholds** — Tier 2 shutdown (30%), recovery (40%), critical (10%) | Yes |
+| 4 | **Notifications** — select notification services for alerts | Yes |
 
-> **Note:** All sensors are optional during setup. You can install Battery Guard first and add sensors later via the integration options once your PV system is fully integrated.
+> \* Sensors are optional during setup. Install Battery Guard first, add sensors later via **Configure** once your PV system is integrated.
 
 ### Device Assignment
 
-After installation, open **Battery Guard** in the sidebar to assign devices to tiers using the built-in wizard. For each device, click the tier buttons (T1, T2, T3, or Ignore) to assign it. Climate and light devices can be in both T1 and T2 with different actions — use the inline dropdowns to configure HVAC mode, temperature, or brightness per tier.
+Open **Battery Guard** in the sidebar to assign devices using the built-in wizard:
+
+- Click **T1**, **T2**, **T3**, or **—** (Ignore) per device
+- Climate and light devices can be in both T1 and T2 with different actions
+- Use the inline dropdowns to configure HVAC mode, temperature, or brightness
 
 See the full [User Guide](docs/USER_GUIDE.md) for detailed instructions.
 
-### Changing Settings Later
+### Changing Settings
 
-Go to **Settings → Devices & Services → Battery Guard → Configure** to change sensors, thresholds, or notification services at any time. The integration reloads automatically.
+Go to **Settings → Devices & Services → Battery Guard → Configure** to change sensors, thresholds, or notifications at any time. The integration reloads automatically.
+
+---
 
 ## Supported Hardware
 
 Battery Guard works with any PV battery system that exposes:
+
 - A **state-of-charge (SOC)** sensor (e.g., via Modbus)
 - A **grid connection status** sensor, or **per-phase voltage sensors** (e.g., Shelly 3EM)
 
-Tested with:
-- Huawei SUN2000 inverter + LUNA2000 battery + BackupBox
+Tested with: **Huawei SUN2000** inverter + **LUNA2000** battery + **BackupBox**
 
-## Entities Created
+---
+
+## Reference
+
+### Entities
 
 | Entity | Type | Description |
-|--------|------|-------------|
-| Power Outage | Binary Sensor | Detects grid power loss |
-| Unassigned Devices | Sensor | Counts devices not assigned to any tier |
-| Tier 2 Shutdown Threshold | Number | SOC level to turn off tier 2 devices |
-| Tier 2 Recovery Threshold | Number | SOC level to restore tier 2 devices |
-| Battery Guard Active | Switch | Emergency mode status |
-| Auto Recovery | Switch | Enable automatic tier 2 recovery |
-| Tier 2 Disabled | Switch | Tracks whether tier 2 is currently shut down |
+|:-------|:-----|:------------|
+| Power Outage | `binary_sensor` | Detects grid power loss |
+| Unassigned Devices | `sensor` | Counts devices not assigned to any tier |
+| Tier 2 Shutdown Threshold | `number` | SOC level that triggers Tier 2 actions |
+| Tier 2 Recovery Threshold | `number` | SOC level that restores Tier 2 devices |
+| Battery Guard Active | `switch` | Emergency mode on/off |
+| Auto Recovery | `switch` | Automatic Tier 2 recovery on/off |
+| Tier 2 Disabled | `switch` | Tracks whether Tier 2 has been executed |
 
-## Services
+### Services
 
 | Service | Description |
-|---------|-------------|
+|:--------|:------------|
 | `battery_guard.tier_off` | Execute configured actions for all devices in a tier |
 | `battery_guard.tier_on` | Restore devices in a tier to their saved state |
 | `battery_guard.restore_all` | Restore all devices and reset emergency mode |
 | `battery_guard.notify` | Send notification via configured services |
+
+### Supported Actions per Domain
+
+| Domain | Available Actions |
+|:-------|:------------------|
+| `switch` | Turn off |
+| `climate` | Set HVAC mode, set temperature, turn off |
+| `light` | Dim (configurable %), turn off |
+| `media_player` | Turn off |
+
+---
 
 ## License
 
