@@ -188,14 +188,14 @@ export function RestoreStep() {
         })}
       </div>
 
-      {/* Stay Off section */}
+      {/* Do Not Restore section */}
       <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-1">
-          Stay Off After Restore
+          Do Not Restore
         </h3>
         <p className="text-xs text-gray-500 mb-3">
-          These devices will NOT automatically restart when grid power returns.
-          You must turn them on manually.
+          These devices will keep their outage state when grid power returns.
+          You must restore them manually.
         </p>
 
         {assignedEntities.length === 0 ? (
@@ -240,8 +240,8 @@ export function RestoreStep() {
         {config.restoreConfig.stay_off.length > 0 && (
           <p className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
             {config.restoreConfig.stay_off.length} device
-            {config.restoreConfig.stay_off.length !== 1 ? 's' : ''} will stay
-            off after restore.
+            {config.restoreConfig.stay_off.length !== 1 ? 's' : ''} will not be
+            restored.
           </p>
         )}
       </div>

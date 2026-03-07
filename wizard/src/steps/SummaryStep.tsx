@@ -174,7 +174,7 @@ export function SummaryStep() {
             </p>
             {config.restoreConfig.stay_off.length > 0 && (
               <p>
-                {config.restoreConfig.stay_off.length} device{config.restoreConfig.stay_off.length !== 1 ? 's' : ''} will stay off after restore
+                {config.restoreConfig.stay_off.length} device{config.restoreConfig.stay_off.length !== 1 ? 's' : ''} will not be restored
               </p>
             )}
           </div>
