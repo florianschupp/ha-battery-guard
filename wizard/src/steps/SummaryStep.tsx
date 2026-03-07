@@ -65,16 +65,20 @@ export function SummaryStep() {
   if (config.deployed) {
     return (
       <div className="max-w-lg mx-auto text-center py-12">
-        <div className="text-5xl mb-4">✅</div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+        <div className="flex justify-center mb-4">
+          <svg className="w-16 h-16 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">
           Devices Configured!
         </h2>
-        <p className="text-gray-600 mb-6">
+        <p className="text-gray-500 mb-6">
           All device labels and actions have been applied. The Battery Guard
           automation engine is now managing your devices with graduated emergency
           response.
         </p>
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800">
           <p className="font-medium mb-2">What happens now:</p>
           <ul className="text-left space-y-1">
             <li>• Thresholds and notifications are managed in the integration settings</li>
@@ -99,10 +103,10 @@ export function SummaryStep() {
 
   return (
     <div className="max-w-lg mx-auto">
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">
+      <h2 className="text-xl font-semibold text-gray-900 mb-2">
         Review & Apply
       </h2>
-      <p className="text-gray-600 mb-6">
+      <p className="text-gray-500 mb-6">
         Review your device assignments and actions before applying them to Home Assistant.
       </p>
 
@@ -113,24 +117,35 @@ export function SummaryStep() {
             Device Assignment
           </h3>
           <div className="space-y-2">
-            {tierCounts.map(({ tierId, display, count }) => (
+            {tierCounts.map(({ tierId, display, count }) => {
+              const dotColor =
+                tierId === 'battery_guard_tier1'
+                  ? 'bg-red-500'
+                  : tierId === 'battery_guard_tier2'
+                    ? 'bg-amber-500'
+                    : tierId === 'battery_guard_tier3'
+                      ? 'bg-green-500'
+                      : 'bg-gray-400'
+              return (
               <div
                 key={tierId}
                 className="flex items-center justify-between text-sm"
               >
-                <span>
-                  {display.emoji} {display.label}
+                <span className="flex items-center gap-2">
+                  <span className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0`} />
+                  {display.label}
                 </span>
                 <span className="font-medium">
                   {count} device{count !== 1 ? 's' : ''}
                 </span>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
         {customActionCount > 0 && (
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-4">
             <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">
               Custom Actions
             </h3>
@@ -165,7 +180,7 @@ export function SummaryStep() {
         <button
           onClick={handleDeploy}
           disabled={deploying}
-          className="flex-1 py-2.5 px-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+          className="flex-1 py-2.5 px-4 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
         >
           {deploying ? 'Applying...' : 'Apply Labels & Actions'}
         </button>

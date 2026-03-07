@@ -42,15 +42,15 @@ export function ConnectionStep() {
 
   return (
     <div className="max-w-lg mx-auto">
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">
+      <h2 className="text-xl font-semibold text-gray-900 mb-2">
         Connect to Home Assistant
       </h2>
-      <p className="text-gray-600 mb-6">
+      <p className="text-gray-500 mb-6">
         Enter your Home Assistant URL and a Long-Lived Access Token to get
         started.
       </p>
 
-      <div className="space-y-4">
+      <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-6 space-y-4">
         <div>
           <label
             htmlFor="ha-url"
@@ -64,7 +64,7 @@ export function ConnectionStep() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="http://homeassistant.local:8123"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
           />
         </div>
 
@@ -81,10 +81,10 @@ export function ConnectionStep() {
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder="eyJhbGciOiJIUzI1..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none font-mono text-sm"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none font-mono text-sm transition-colors"
           />
-          <p className="mt-1 text-xs text-gray-500">
-            Create one at: Your Profile → Long-Lived Access Tokens → Create
+          <p className="mt-1 text-xs text-gray-400">
+            Create one at: Your Profile &rarr; Long-Lived Access Tokens &rarr; Create
             Token
           </p>
         </div>
@@ -98,7 +98,7 @@ export function ConnectionStep() {
         <button
           onClick={handleConnect}
           disabled={!url || !token || status === 'connecting'}
-          className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+          className="w-full py-2.5 px-4 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
         >
           {status === 'connecting' ? 'Connecting...' : 'Connect'}
         </button>

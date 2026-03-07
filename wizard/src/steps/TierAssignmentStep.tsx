@@ -343,10 +343,10 @@ export function TierAssignmentStep() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">
+          <h2 className="text-xl font-semibold text-gray-900">
             Assign Devices to Tiers
           </h2>
-          <p className="text-gray-600">
+          <p className="text-gray-500">
             {config.entities.length} devices found.{' '}
             {unassignedCount > 0
               ? `${unassignedCount} unassigned.`
@@ -375,7 +375,7 @@ export function TierAssignmentStep() {
           )}
           <button
             onClick={() => setCurrentStep(WIZARD_STEPS[3])}
-            className="py-2 px-4 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors"
+            className="py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors"
           >
             Continue
           </button>
@@ -417,7 +417,7 @@ export function TierAssignmentStep() {
           onClick={() => setDomainFilter(null)}
           className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
             !domainFilter
-              ? 'bg-amber-500 text-white'
+              ? 'bg-blue-500 text-white'
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
@@ -465,7 +465,7 @@ export function TierAssignmentStep() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search devices..."
-        className="w-full px-3 py-2 mb-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+        className="w-full px-3 py-2 mb-4 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
       />
 
       {/* Entity list grouped by area */}
@@ -478,11 +478,19 @@ export function TierAssignmentStep() {
                 onClick={() => toggleAreaCollapse(group.areaId)}
                 className="flex items-center gap-2 w-full text-left px-2 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded mb-1"
               >
-                <span
-                  className={`text-[10px] text-gray-400 transition-transform ${collapsedAreas.has(group.areaId) ? '' : 'rotate-90'}`}
+                <svg
+                  className={`w-3.5 h-3.5 text-gray-400 transition-transform ${collapsedAreas.has(group.areaId) ? '' : 'rotate-90'}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  ▶
-                </span>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 5l7 7-7 7"
+                  />
+                </svg>
                 {group.areaName}
                 <span className="text-xs text-gray-400 font-normal">
                   ({group.entities.length})
@@ -526,13 +534,23 @@ export function TierAssignmentStep() {
           const count = Object.values(config.assignments).filter((tiers) =>
             tiers.includes(tierId),
           ).length
+          const dotColor =
+            tierId === 'battery_guard_tier1'
+              ? 'bg-red-500'
+              : tierId === 'battery_guard_tier2'
+                ? 'bg-amber-500'
+                : tierId === 'battery_guard_tier3'
+                  ? 'bg-green-500'
+                  : 'bg-gray-400'
           return (
             <div
               key={tierId}
-              className="bg-white border border-gray-200 rounded-lg p-3 text-center"
+              className="bg-white shadow-sm border border-gray-100 rounded-xl p-3 text-center"
             >
-              <div className="text-lg">{display.emoji}</div>
-              <div className="text-xs font-medium text-gray-600 mt-1">
+              <div className="flex justify-center">
+                <div className={`w-3 h-3 rounded-full ${dotColor}`} />
+              </div>
+              <div className="text-xs font-medium text-gray-600 mt-1.5">
                 {display.label.split(' — ')[0]}
               </div>
               <div className="text-xl font-bold text-gray-900">{count}</div>
@@ -592,8 +610,8 @@ function BulkActionBar({
   const hasT2 = selectedTiers.includes('battery_guard_tier2')
 
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4">
-      <p className="text-sm font-medium text-amber-900 mb-2">
+    <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4">
+      <p className="text-sm font-medium text-blue-900 mb-2">
         Apply to all {entityCount} {domain} devices:
       </p>
       <div className="flex items-center gap-4 flex-wrap">
@@ -642,12 +660,12 @@ function BulkActionBar({
                 tier2: hasT2 ? tier2Action : undefined,
               })
             }
-            className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium rounded-lg transition-colors"
+            className="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg transition-colors"
           >
             Apply to all ({entityCount})
           </button>
           {existingCustomCount > 0 && (
-            <span className="text-xs text-amber-700">
+            <span className="text-xs text-blue-700">
               Overwrites {existingCustomCount} custom config
               {existingCustomCount > 1 ? 's' : ''}
             </span>
@@ -698,7 +716,7 @@ function EntityRow({
   const showActionConfig = isConfigurable && (isExpanded || hasNonDefaultAction)
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+    <div className="bg-white shadow-sm border border-gray-100 rounded-xl px-4 py-3">
       <div className="flex items-center gap-3">
         {/* Tier pill buttons (left side) */}
         <div className="flex gap-1 shrink-0">

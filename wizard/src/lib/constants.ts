@@ -100,25 +100,21 @@ export const TIER_DISPLAY = {
   battery_guard_tier1: {
     label: 'Tier 1 — Off Immediately',
     color: 'red',
-    emoji: '🔴',
     description: 'HVAC, water heaters, TV, EV charger',
   },
   battery_guard_tier2: {
     label: 'Tier 2 — Off at Low Battery',
     color: 'orange',
-    emoji: '🟡',
     description: 'Refrigerators, lights, non-critical switches',
   },
   battery_guard_tier3: {
     label: 'Tier 3 — Never Turn Off',
     color: 'green',
-    emoji: '🟢',
     description: 'Home Assistant, network, critical infrastructure',
   },
   battery_guard_ignore: {
     label: 'Ignore',
     color: 'grey',
-    emoji: '⚪',
     description: 'Excluded from monitoring',
   },
 } as const
