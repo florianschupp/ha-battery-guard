@@ -30,6 +30,8 @@ export async function discoverEntities(): Promise<WizardEntity[]> {
     .filter((entry) => {
       // Exclude Battery Guard's own entities
       if (entry.platform === BATTERY_GUARD_PLATFORM) return false
+      // Exclude config and diagnostic entities (not controllable devices)
+      if (entry.entity_category === 'config' || entry.entity_category === 'diagnostic') return false
       const domain = entry.entity_id.split('.')[0]
       return (TRACKED_DOMAINS as readonly string[]).includes(domain)
     })

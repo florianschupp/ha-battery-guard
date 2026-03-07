@@ -140,8 +140,6 @@ export function TierAssignmentStep() {
     (e) => !config.assignments[e.entity_id] || config.assignments[e.entity_id].length === 0,
   ).length
 
-  const allAssigned = unassignedCount === 0
-
   // Domain counts for filter chips
   const domainCounts = (TRACKED_DOMAINS as readonly string[]).reduce(
     (acc, d) => {
@@ -173,13 +171,29 @@ export function TierAssignmentStep() {
               : 'All assigned!'}
           </p>
         </div>
-        <button
-          onClick={() => setCurrentStep(WIZARD_STEPS[3])}
-          disabled={!allAssigned}
-          className="py-2 px-4 bg-amber-500 hover:bg-amber-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
-        >
-          Continue
-        </button>
+        <div className="flex gap-2">
+          {unassignedCount > 0 && (
+            <button
+              onClick={() => {
+                for (const entity of config.entities) {
+                  const current = config.assignments[entity.entity_id]
+                  if (!current || current.length === 0) {
+                    dispatch({ type: 'SET_ASSIGNMENT', entityId: entity.entity_id, labelIds: ['battery_guard_ignore'] })
+                  }
+                }
+              }}
+              className="py-2 px-4 bg-gray-400 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors text-sm"
+            >
+              Ignore rest ({unassignedCount})
+            </button>
+          )}
+          <button
+            onClick={() => setCurrentStep(WIZARD_STEPS[3])}
+            className="py-2 px-4 bg-amber-500 hover:bg-amber-600 text-white font-medium rounded-lg transition-colors"
+          >
+            Continue
+          </button>
+        </div>
       </div>
 
       {/* Instruction text */}
@@ -311,19 +325,7 @@ function EntityRow({
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-3 py-2">
       <div className="flex items-center gap-3">
-        {/* Entity info */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-              {entity.domain}
-            </span>
-            <p className="text-sm font-medium text-gray-900 truncate">
-              {entity.friendly_name}
-            </p>
-          </div>
-        </div>
-
-        {/* Tier pill buttons */}
+        {/* Tier pill buttons (left side) */}
         <div className="flex gap-1 shrink-0">
           {TIER_PILLS.map((pill) => {
             const isActive = tiers.includes(pill.id)
@@ -348,6 +350,18 @@ function EntityRow({
               </button>
             )
           })}
+        </div>
+
+        {/* Entity info */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+              {entity.domain}
+            </span>
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {entity.friendly_name}
+            </p>
+          </div>
         </div>
       </div>
 

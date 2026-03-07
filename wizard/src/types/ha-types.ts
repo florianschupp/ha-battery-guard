@@ -5,6 +5,7 @@ export interface HAEntityRegistryEntry {
   icon: string | null
   platform: string
   disabled_by: string | null
+  entity_category: string | null
   labels: string[]
   area_id: string | null
   device_id: string | null
