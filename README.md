@@ -8,29 +8,32 @@
 
 **Automatic device management during power outages for PV battery systems.**
 
-Battery Guard monitors your PV battery system and automatically shuts down non-essential devices in tiers when a power outage is detected, preserving battery power for critical loads.
+Battery Guard monitors your PV battery system and automatically manages non-essential devices in tiers when a power outage is detected, preserving battery power for critical loads.
 
 ## Features
 
 - **3-tier device priority system** — Assign devices to tiers based on importance
+- **Graduated emergency actions** — Per-device, per-tier actions: set HVAC mode, dim lights, set temperature, or turn off
 - **Automatic power outage detection** — Via grid status sensor or voltage monitoring (Shelly 3EM)
-- **SOC-based tier management** — Tier 2 devices turn off when battery drops below threshold
+- **SOC-based tier management** — Tier 2 actions execute when battery drops below threshold
+- **State save & restore** — Device states are automatically captured and fully restored when grid returns
 - **Hysteresis control** — Separate shutdown and recovery thresholds prevent oscillation
-- **Automatic restoration** — All devices restored when grid power returns
 - **Critical battery alerts** — Notifications when battery reaches critical levels
-- **Built-in device wizard** — Sidebar panel for easy device-to-tier assignment
+- **Built-in device wizard** — Sidebar panel with inline tier assignment and domain-aware action configuration
 - **Flexible notifications** — Persistent notifications + configurable notification services
 
 ## How It Works
 
 When a power outage is detected:
 
-1. **Immediately**: Tier 1 devices are turned off (e.g., HVAC, water heaters, EV charger)
-2. **Battery below threshold** (default 30%): Tier 2 devices are turned off (e.g., non-essential lights, entertainment)
-3. **Battery recovers** (default 40%): Tier 2 devices are restored
-4. **Grid restored**: All devices are restored automatically
+1. **Immediately**: Tier 1 actions execute (e.g., HVAC switches to fan-only mode, EV charger turns off)
+2. **Battery below threshold** (default 30%): Tier 2 actions execute (e.g., lights dim or turn off, appliances shut down)
+3. **Battery recovers** (default 40%): Tier 2 devices are restored to their original state
+4. **Grid restored**: All devices are restored to their pre-outage state automatically
 
-**Tier 3** devices (e.g., internet router, security cameras, freezer) are never turned off. You decide which devices go into which tier.
+**Tier 3** devices (e.g., internet router, security cameras, freezer) are never turned off. You decide which devices go into which tier and what action each device should take.
+
+Devices can be in multiple tiers with different actions. For example, an air conditioner can switch to fan-only mode in Tier 1 and turn off completely in Tier 2.
 
 ## Installation
 
@@ -64,7 +67,9 @@ The config flow guides you through 4 steps:
 
 ### Device Assignment
 
-After installation, open **Battery Guard** in the sidebar to assign devices to tiers using the built-in wizard.
+After installation, open **Battery Guard** in the sidebar to assign devices to tiers using the built-in wizard. For each device, click the tier buttons (T1, T2, T3, or Ignore) to assign it. Climate and light devices can be in both T1 and T2 with different actions — use the inline dropdowns to configure HVAC mode, temperature, or brightness per tier.
+
+See the full [User Guide](docs/USER_GUIDE.md) for detailed instructions.
 
 ### Changing Settings Later
 
@@ -95,9 +100,9 @@ Tested with:
 
 | Service | Description |
 |---------|-------------|
-| `battery_guard.tier_off` | Turn off all devices in a tier |
-| `battery_guard.tier_on` | Restore devices in a tier |
-| `battery_guard.restore_all` | Restore all devices and reset status |
+| `battery_guard.tier_off` | Execute configured actions for all devices in a tier |
+| `battery_guard.tier_on` | Restore devices in a tier to their saved state |
+| `battery_guard.restore_all` | Restore all devices and reset emergency mode |
 | `battery_guard.notify` | Send notification via configured services |
 
 ## License
