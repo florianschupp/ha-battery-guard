@@ -54,6 +54,7 @@ export const LABEL_MIGRATION_MAP: Record<string, string> = {
 /** Entity domains tracked by Battery Guard */
 export const TRACKED_DOMAINS = [
   'switch',
+  'input_boolean',
   'climate',
   'light',
   'media_player',
@@ -70,6 +71,11 @@ export const DEFAULT_TIER2_RECOVERY_THRESHOLD = 40
 export const DOMAIN_ACTIONS: Record<string, { value: string; label: string }[]> = {
   switch: [
     { value: 'turn_off', label: 'Turn off' },
+    { value: 'turn_on', label: 'Turn on' },
+  ],
+  input_boolean: [
+    { value: 'turn_off', label: 'Turn off' },
+    { value: 'turn_on', label: 'Turn on' },
   ],
   climate: [
     { value: 'set_hvac_mode', label: 'Set HVAC mode' },

@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "2.1.1"
+VERSION = "2.2.0"
 
 # Platforms
 PLATFORMS = [
@@ -54,7 +54,7 @@ LABEL_DEFINITIONS = {
 }
 
 # Entity domains tracked by Battery Guard
-TRACKED_DOMAINS = ["switch", "climate", "light", "media_player"]
+TRACKED_DOMAINS = ["switch", "input_boolean", "climate", "light", "media_player"]
 
 # Default thresholds
 DEFAULT_TIER2_THRESHOLD = 30
@@ -95,7 +95,8 @@ TIER_KEY_TO_LABEL: dict[str, str] = {
 
 # Valid actions per entity domain
 DOMAIN_ACTIONS: dict[str, list[str]] = {
-    "switch": ["turn_off"],
+    "switch": ["turn_off", "turn_on"],
+    "input_boolean": ["turn_off", "turn_on"],
     "climate": ["set_hvac_mode", "set_temperature", "turn_off"],
     "light": ["dim", "turn_off"],
     "media_player": ["turn_off"],

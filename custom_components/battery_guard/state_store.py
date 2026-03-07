@@ -129,6 +129,14 @@ async def execute_action(
             target={"entity_id": entity_id},
             blocking=True,
         )
+    elif action == "turn_on":
+        await hass.services.async_call(
+            "homeassistant",
+            "turn_on",
+            {},
+            target={"entity_id": entity_id},
+            blocking=True,
+        )
     elif action == "set_hvac_mode" and domain == "climate":
         hvac_mode = action_config.get("hvac_mode", "fan_only")
         await hass.services.async_call(
