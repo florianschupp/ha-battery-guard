@@ -177,6 +177,11 @@ export function SummaryStep() {
                 {config.restoreConfig.stay_off.length} device{config.restoreConfig.stay_off.length !== 1 ? 's' : ''} will not be restored
               </p>
             )}
+            {Object.keys(config.restoreConfig.device_delays || {}).length > 0 && (
+              <p>
+                {Object.keys(config.restoreConfig.device_delays).length} device{Object.keys(config.restoreConfig.device_delays).length !== 1 ? 's' : ''} with custom restore delay
+              </p>
+            )}
           </div>
         </div>
       </div>

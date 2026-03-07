@@ -170,21 +170,24 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             _LOGGER.info("No restorable entities found for tier %s", tier)
             return
 
-        # Get device delay for this tier
+        # Get default device delay for this tier
         tier_key = _TIER_ACTION_KEY.get(tier, "tier1")
-        device_delay = (
+        default_device_delay = (
             restore_config.get("tier_delays", {})
             .get(tier_key, {})
             .get("device_delay", 0)
         )
 
+        # Per-device delay overrides (entity_id → seconds)
+        device_delays: dict[str, int] = restore_config.get("device_delays", {})
+
         state_store = _get_state_store(hass)
 
         _LOGGER.info(
-            "Restoring %d entities in %s (device_delay=%ds)",
+            "Restoring %d entities in %s (default_device_delay=%ds)",
             len(entity_ids),
             tier,
-            device_delay,
+            default_device_delay,
         )
 
         for i, entity_id in enumerate(entity_ids):
@@ -214,8 +217,15 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                 _LOGGER.exception("Failed to restore %s", entity_id)
 
             # Delay between devices (not after the last one)
-            if device_delay > 0 and i < len(entity_ids) - 1:
-                await asyncio.sleep(device_delay)
+            # Use per-device override if configured, else fall back to tier default
+            if i < len(entity_ids) - 1:
+                delay = device_delays.get(entity_id, default_device_delay)
+                if delay > 0:
+                    if entity_id in device_delays:
+                        _LOGGER.debug(
+                            "Using custom delay %ds after %s", delay, entity_id
+                        )
+                    await asyncio.sleep(delay)
 
     async def handle_restore_all(call: ServiceCall) -> None:
         """Staged restore: restore tiers in configured order with delays."""

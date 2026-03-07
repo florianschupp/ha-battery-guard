@@ -188,14 +188,15 @@ export function RestoreStep() {
         })}
       </div>
 
-      {/* Do Not Restore section */}
+      {/* Per-device restore settings */}
       <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-1">
-          Do Not Restore
+          Per-Device Settings
         </h3>
         <p className="text-xs text-gray-500 mb-3">
-          These devices will keep their outage state when grid power returns.
-          You must restore them manually.
+          Mark devices as &quot;Do Not Restore&quot; or set a custom delay for
+          high-power consumers (e.g., EV charger, HVAC). Custom delays override
+          the tier default.
         </p>
 
         {assignedEntities.length === 0 ? (
@@ -203,15 +204,17 @@ export function RestoreStep() {
             No assigned devices. Go back and assign devices to tiers first.
           </p>
         ) : (
-          <div className="space-y-1 max-h-64 overflow-y-auto">
+          <div className="space-y-1">
             {assignedEntities.map((entity) => {
               const isStayOff = config.restoreConfig.stay_off.includes(
                 entity.entity_id,
               )
+              const customDelay =
+                config.restoreConfig.device_delays?.[entity.entity_id]
               return (
-                <label
+                <div
                   key={entity.entity_id}
-                  className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50 cursor-pointer"
+                  className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50"
                 >
                   <input
                     type="checkbox"
@@ -223,22 +226,58 @@ export function RestoreStep() {
                         stayOff: e.target.checked,
                       })
                     }
-                    className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                    title="Do Not Restore"
+                    className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 shrink-0 cursor-pointer"
                   />
                   <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
                     {entity.domain}
                   </span>
-                  <span className="text-sm text-gray-700 truncate">
+                  <span className="text-sm text-gray-700 truncate min-w-0 flex-1">
                     {entity.friendly_name}
                   </span>
-                </label>
+                  {isStayOff ? (
+                    <span className="text-xs text-gray-400 italic shrink-0">
+                      no restore
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <input
+                        type="number"
+                        min={0}
+                        max={300}
+                        step={5}
+                        value={customDelay ?? ''}
+                        placeholder="—"
+                        onChange={(e) => {
+                          const val = e.target.value
+                            ? parseInt(e.target.value, 10)
+                            : null
+                          dispatch({
+                            type: 'SET_DEVICE_DELAY',
+                            entityId: entity.entity_id,
+                            delay: val,
+                          })
+                        }}
+                        title="Custom restore delay (seconds)"
+                        className="w-14 border border-gray-200 rounded px-2 py-0.5 text-xs text-right bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                      <span className="text-xs text-gray-400">s</span>
+                    </div>
+                  )}
+                </div>
               )
             })}
           </div>
         )}
 
+        {/* Legend */}
+        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
+          <span>☑ = Do Not Restore</span>
+          <span>Delay = seconds after this device before next</span>
+        </div>
+
         {config.restoreConfig.stay_off.length > 0 && (
-          <p className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-100">
+          <p className="text-xs text-gray-500 mt-2">
             {config.restoreConfig.stay_off.length} device
             {config.restoreConfig.stay_off.length !== 1 ? 's' : ''} will not be
             restored.

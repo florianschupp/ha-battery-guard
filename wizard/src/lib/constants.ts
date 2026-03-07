@@ -110,6 +110,7 @@ export const DEFAULT_RESTORE_CONFIG = {
     tier1: { tier_delay: 60, device_delay: 10 },
   },
   stay_off: [] as string[],
+  device_delays: {} as Record<string, number>,
 }
 
 /** Tier display info */

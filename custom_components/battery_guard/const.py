@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "2.2.1"
+VERSION = "2.3.0"
 
 # Platforms
 PLATFORMS = [
@@ -84,6 +84,7 @@ DEFAULT_RESTORE_CONFIG: dict[str, Any] = {
         "tier1": {"tier_delay": 60, "device_delay": 10},
     },
     "stay_off": [],
+    "device_delays": {},
 }
 
 # Map tier keys to label constants

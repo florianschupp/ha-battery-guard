@@ -70,6 +70,7 @@ export interface RestoreConfig {
   restore_order: string[]
   tier_delays: Record<string, { tier_delay: number; device_delay: number }>
   stay_off: string[]
+  device_delays: Record<string, number>
 }
 
 /** Wizard configuration state */
@@ -109,5 +110,6 @@ export type WizardAction =
   | { type: 'SET_AREAS'; areas: Record<string, string> }
   | { type: 'SET_RESTORE_CONFIG'; restoreConfig: RestoreConfig }
   | { type: 'SET_STAY_OFF'; entityId: string; stayOff: boolean }
+  | { type: 'SET_DEVICE_DELAY'; entityId: string; delay: number | null }
   | { type: 'SET_DEPLOYED'; deployed: boolean }
   | { type: 'RESET' }

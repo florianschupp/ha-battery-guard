@@ -74,6 +74,18 @@ function wizardReducer(
         restoreConfig: { ...state.restoreConfig, stay_off: currentStayOff },
       }
     }
+    case 'SET_DEVICE_DELAY': {
+      const newDeviceDelays = { ...state.restoreConfig.device_delays }
+      if (action.delay !== null && action.delay > 0) {
+        newDeviceDelays[action.entityId] = action.delay
+      } else {
+        delete newDeviceDelays[action.entityId]
+      }
+      return {
+        ...state,
+        restoreConfig: { ...state.restoreConfig, device_delays: newDeviceDelays },
+      }
+    }
     case 'SET_DEPLOYED':
       return { ...state, deployed: action.deployed }
     case 'RESET':
