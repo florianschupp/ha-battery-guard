@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWizard } from '../hooks/useWizard'
 import {
   discoverAreas,
@@ -138,6 +138,8 @@ export function TierAssignmentStep() {
     new Set(),
   )
   const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(new Set())
+  const [highlightedEntity, setHighlightedEntity] = useState<string | null>(null)
+  const scrollDoneRef = useRef(false)
 
   const loadEntities = useCallback(async () => {
     setLoading(true)
@@ -170,6 +172,35 @@ export function TierAssignmentStep() {
   useEffect(() => {
     loadEntities()
   }, [loadEntities])
+
+  // Scroll to and highlight focused entity (from dashboard click)
+  useEffect(() => {
+    if (!config.focusedEntityId || loading || scrollDoneRef.current) return
+
+    const entityId = config.focusedEntityId
+    scrollDoneRef.current = true
+
+    // Clear filters so the entity is visible
+    setSearch('')
+    setDomainFilter(null)
+    setCollapsedAreas(new Set())
+
+    // Expand the entity's action config
+    setExpandedEntities((prev) => new Set(prev).add(entityId))
+
+    // Highlight and scroll after DOM renders
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-entity-id="${entityId}"]`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        setHighlightedEntity(entityId)
+        setTimeout(() => setHighlightedEntity(null), 2000)
+      }
+    })
+
+    // Clear the focused entity
+    dispatch({ type: 'SET_FOCUSED_ENTITY', entityId: undefined })
+  }, [config.focusedEntityId, loading, dispatch])
 
   /** Toggle a tier for an entity */
   function toggleTier(entityId: string, tierId: string) {
@@ -515,6 +546,7 @@ export function TierAssignmentStep() {
                       config.deviceActions[entity.entity_id] || {}
                     }
                     isExpanded={expandedEntities.has(entity.entity_id)}
+                    isHighlighted={highlightedEntity === entity.entity_id}
                     onToggleTier={toggleTier}
                     onSetAction={setAction}
                     onToggleExpand={toggleExpanded}
@@ -688,6 +720,7 @@ function EntityRow({
   tiers,
   deviceActions,
   isExpanded,
+  isHighlighted,
   onToggleTier,
   onSetAction,
   onToggleExpand,
@@ -696,6 +729,7 @@ function EntityRow({
   tiers: string[]
   deviceActions: Record<string, ActionConfig>
   isExpanded: boolean
+  isHighlighted?: boolean
   onToggleTier: (entityId: string, tierId: string) => void
   onSetAction: (
     entityId: string,
@@ -719,7 +753,14 @@ function EntityRow({
   const showActionConfig = isConfigurable && (isExpanded || hasNonDefaultAction)
 
   return (
-    <div className="bg-white shadow-sm border border-gray-100 rounded-xl px-4 py-3">
+    <div
+      data-entity-id={entity.entity_id}
+      className={`bg-white shadow-sm border rounded-xl px-4 py-3 transition-all ${
+        isHighlighted
+          ? 'border-blue-400 ring-2 ring-blue-200'
+          : 'border-gray-100'
+      }`}
+    >
       <div className="flex items-center gap-3">
         {/* Tier pill buttons (left side) */}
         <div className="flex gap-1 shrink-0">

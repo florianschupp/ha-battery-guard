@@ -99,6 +99,9 @@ export interface WizardConfig {
 
   /** Deployment status */
   deployed: boolean
+
+  /** Entity to focus/highlight after navigating from dashboard */
+  focusedEntityId?: string
 }
 
 export type WizardAction =
@@ -114,4 +117,5 @@ export type WizardAction =
   | { type: 'SET_STAY_OFF'; entityId: string; stayOff: boolean }
   | { type: 'SET_DEVICE_DELAY'; entityId: string; delay: number | null }
   | { type: 'SET_DEPLOYED'; deployed: boolean }
+  | { type: 'SET_FOCUSED_ENTITY'; entityId: string | undefined }
   | { type: 'RESET' }

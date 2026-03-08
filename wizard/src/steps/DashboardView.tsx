@@ -57,6 +57,22 @@ function DomainIcon({ domain, className }: { domain: string; className?: string 
   }
 }
 
+/** Battery level icon for tier section headers */
+function BatteryIcon({ level, className }: { level: 1 | 2 | 3; className?: string }) {
+  const cls = className || 'w-5 h-5'
+  const fillColor = level === 1 ? '#f43f5e' : level === 2 ? '#f59e0b' : '#10b981'
+  const fills = { 1: { y: 16, h: 3 }, 2: { y: 12, h: 7 }, 3: { y: 6, h: 13 } }
+  const { y, h } = fills[level]
+
+  return (
+    <svg className={cls} viewBox="0 0 24 24" fill="none">
+      <rect x="6" y="4" width="12" height="16" rx="1.5" stroke="currentColor" strokeWidth={1.5} />
+      <rect x="9.5" y="1.5" width="5" height="2.5" rx="0.75" stroke="currentColor" strokeWidth={1.5} />
+      <rect x="7.5" y={y} width="9" height={h} rx="0.5" fill={fillColor} />
+    </svg>
+  )
+}
+
 /** Severity score for sorting within a tier (higher = more disruptive) */
 function getActionSeverity(action: ActionConfig | undefined): number {
   if (!action) return 0
@@ -199,17 +215,22 @@ function EntityCard({
   restoreMode,
   showAction,
   areaName,
+  onClick,
 }: {
   entity: WizardEntity
   actionConfig: ActionConfig
   restoreMode: string
   showAction: boolean
   areaName: string | null
+  onClick?: () => void
 }) {
   const colorClass = getActionColor(actionConfig)
 
   return (
-    <div className="bg-white rounded-lg border border-gray-100 shadow-sm p-3 flex flex-col gap-1.5">
+    <div
+      onClick={onClick}
+      className="bg-white rounded-lg border border-gray-100 shadow-sm p-3 flex flex-col gap-1.5 cursor-pointer hover:border-gray-300 hover:shadow transition-all"
+    >
       <div className="flex items-start gap-2 min-w-0">
         <DomainIcon
           domain={entity.domain}
@@ -228,10 +249,17 @@ function EntityCard({
       </div>
       <div className="border-t border-gray-50" />
       <div className="flex items-center justify-between gap-2 text-xs min-w-0">
-        {showAction && (
+        {showAction ? (
           <span className={`flex items-center gap-1 ${colorClass} truncate`}>
             <ActionIcon action={actionConfig} />
             <span className="truncate">{getActionLabel(actionConfig)}</span>
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 text-emerald-500 truncate">
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            <span className="truncate">Protected</span>
           </span>
         )}
         <span
@@ -258,7 +286,7 @@ const TIER_SECTIONS = [
     title: 'Tier 1',
     label: 'Immediate Response',
     subtitle: 'These devices are switched immediately when a power outage is detected.',
-    dotColor: 'bg-rose-400',
+    batteryLevel: 1 as const,
     showActions: true,
   },
   {
@@ -267,7 +295,7 @@ const TIER_SECTIONS = [
     title: 'Tier 2',
     label: 'Low Battery',
     subtitle: 'These devices are switched when battery drops below the configured threshold.',
-    dotColor: 'bg-amber-400',
+    batteryLevel: 2 as const,
     showActions: true,
   },
   {
@@ -276,7 +304,7 @@ const TIER_SECTIONS = [
     title: 'Tier 3',
     label: 'Critical Infrastructure',
     subtitle: 'These devices are never turned off and run until total power loss.',
-    dotColor: 'bg-emerald-400',
+    batteryLevel: 3 as const,
     showActions: false,
   },
 ] as const
@@ -379,8 +407,9 @@ export function DashboardView() {
           return (
             <div key={section.key}>
               <div className="flex items-center gap-2.5 mb-1">
-                <div
-                  className={`w-2 h-2 rounded-full ${section.dotColor}`}
+                <BatteryIcon
+                  level={section.batteryLevel}
+                  className="w-5 h-5 text-gray-500"
                 />
                 <h3 className="text-sm font-semibold text-gray-800">
                   {section.title}
@@ -393,12 +422,12 @@ export function DashboardView() {
                   {entities.length !== 1 ? 's' : ''}
                 </span>
               </div>
-              <p className="text-xs text-gray-400 mb-3 ml-[14px]">
+              <p className="text-xs text-gray-400 mb-3 ml-[30px]">
                 {section.subtitle}
               </p>
 
               {entities.length === 0 ? (
-                <p className="text-sm text-gray-400 ml-[14px]">
+                <p className="text-sm text-gray-400 ml-[30px]">
                   No devices assigned.
                 </p>
               ) : (
@@ -428,6 +457,10 @@ export function DashboardView() {
                           restoreMode={getRestoreMode(entity.entity_id)}
                           showAction={section.showActions}
                           areaName={areaName}
+                          onClick={() => {
+                            dispatch({ type: 'SET_FOCUSED_ENTITY', entityId: entity.entity_id })
+                            setCurrentStep('assignment')
+                          }}
                         />
                       )
                     })}

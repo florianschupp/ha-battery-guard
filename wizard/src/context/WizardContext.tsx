@@ -88,6 +88,8 @@ function wizardReducer(
     }
     case 'SET_DEPLOYED':
       return { ...state, deployed: action.deployed }
+    case 'SET_FOCUSED_ENTITY':
+      return { ...state, focusedEntityId: action.entityId }
     case 'RESET':
       return initialConfig
     default:
