@@ -194,9 +194,8 @@ export function RestoreStep() {
           Per-Device Settings
         </h3>
         <p className="text-xs text-gray-500 mb-3">
-          Mark devices as &quot;Do Not Restore&quot; or set a custom delay for
-          high-power consumers (e.g., EV charger, HVAC). Custom delays override
-          the tier default.
+          Override restore behavior for individual devices. &quot;Standard&quot;
+          uses the tier default delay.
         </p>
 
         {assignedEntities.length === 0 ? (
@@ -204,61 +203,90 @@ export function RestoreStep() {
             No assigned devices. Go back and assign devices to tiers first.
           </p>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {assignedEntities.map((entity) => {
               const isStayOff = config.restoreConfig.stay_off.includes(
                 entity.entity_id,
               )
               const customDelay =
                 config.restoreConfig.device_delays?.[entity.entity_id]
+
+              // Determine current mode
+              const mode: 'standard' | 'custom_delay' | 'do_not_restore' =
+                isStayOff
+                  ? 'do_not_restore'
+                  : customDelay !== undefined
+                    ? 'custom_delay'
+                    : 'standard'
+
+              function handleModeChange(newMode: string) {
+                // Clear previous state
+                if (isStayOff) {
+                  dispatch({
+                    type: 'SET_STAY_OFF',
+                    entityId: entity.entity_id,
+                    stayOff: false,
+                  })
+                }
+                if (customDelay !== undefined) {
+                  dispatch({
+                    type: 'SET_DEVICE_DELAY',
+                    entityId: entity.entity_id,
+                    delay: null,
+                  })
+                }
+
+                // Apply new state
+                if (newMode === 'do_not_restore') {
+                  dispatch({
+                    type: 'SET_STAY_OFF',
+                    entityId: entity.entity_id,
+                    stayOff: true,
+                  })
+                } else if (newMode === 'custom_delay') {
+                  dispatch({
+                    type: 'SET_DEVICE_DELAY',
+                    entityId: entity.entity_id,
+                    delay: 30,
+                  })
+                }
+              }
+
               return (
                 <div
                   key={entity.entity_id}
-                  className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-gray-50"
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50"
                 >
-                  <input
-                    type="checkbox"
-                    checked={isStayOff}
-                    onChange={(e) =>
-                      dispatch({
-                        type: 'SET_STAY_OFF',
-                        entityId: entity.entity_id,
-                        stayOff: e.target.checked,
-                      })
-                    }
-                    title="Do Not Restore"
-                    className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500 shrink-0 cursor-pointer"
-                  />
                   <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded shrink-0">
                     {entity.domain}
                   </span>
                   <span className="text-sm text-gray-700 truncate min-w-0 flex-1">
                     {entity.friendly_name}
                   </span>
-                  {isStayOff ? (
-                    <span className="text-xs text-gray-400 italic shrink-0">
-                      no restore
-                    </span>
-                  ) : (
+                  <select
+                    value={mode}
+                    onChange={(e) => handleModeChange(e.target.value)}
+                    className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shrink-0"
+                  >
+                    <option value="standard">Standard</option>
+                    <option value="custom_delay">Custom Delay</option>
+                    <option value="do_not_restore">Do Not Restore</option>
+                  </select>
+                  {mode === 'custom_delay' && (
                     <div className="flex items-center gap-1 shrink-0">
                       <input
                         type="number"
-                        min={0}
+                        min={1}
                         max={300}
                         step={5}
-                        value={customDelay ?? ''}
-                        placeholder="—"
-                        onChange={(e) => {
-                          const val = e.target.value
-                            ? parseInt(e.target.value, 10)
-                            : null
+                        value={customDelay ?? 30}
+                        onChange={(e) =>
                           dispatch({
                             type: 'SET_DEVICE_DELAY',
                             entityId: entity.entity_id,
-                            delay: val,
+                            delay: parseInt(e.target.value, 10) || 1,
                           })
-                        }}
-                        title="Custom restore delay (seconds)"
+                        }
                         className="w-14 border border-gray-200 rounded px-2 py-0.5 text-xs text-right bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                       />
                       <span className="text-xs text-gray-400">s</span>
@@ -270,18 +298,27 @@ export function RestoreStep() {
           </div>
         )}
 
-        {/* Legend */}
-        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400">
-          <span>☑ = Do Not Restore</span>
-          <span>Delay = seconds after this device before next</span>
-        </div>
-
-        {config.restoreConfig.stay_off.length > 0 && (
-          <p className="text-xs text-gray-500 mt-2">
-            {config.restoreConfig.stay_off.length} device
-            {config.restoreConfig.stay_off.length !== 1 ? 's' : ''} will not be
-            restored.
-          </p>
+        {(config.restoreConfig.stay_off.length > 0 ||
+          Object.keys(config.restoreConfig.device_delays || {}).length > 0) && (
+          <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 space-y-0.5">
+            {config.restoreConfig.stay_off.length > 0 && (
+              <p>
+                {config.restoreConfig.stay_off.length} device
+                {config.restoreConfig.stay_off.length !== 1 ? 's' : ''} will not
+                be restored.
+              </p>
+            )}
+            {Object.keys(config.restoreConfig.device_delays || {}).length >
+              0 && (
+              <p>
+                {Object.keys(config.restoreConfig.device_delays).length} device
+                {Object.keys(config.restoreConfig.device_delays).length !== 1
+                  ? 's'
+                  : ''}{' '}
+                with custom delay.
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>
