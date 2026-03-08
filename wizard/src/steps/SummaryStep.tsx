@@ -79,31 +79,19 @@ export function SummaryStep() {
           </svg>
         </div>
         <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          Devices Configured!
+          Configuration Applied!
         </h2>
         <p className="text-gray-500 mb-6">
-          All device labels and actions have been applied. The Battery Guard
-          automation engine is now managing your devices with graduated emergency
-          response.
+          All device labels, actions, and restore settings have been saved.
         </p>
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800">
-          <p className="font-medium mb-2">What happens now:</p>
-          <ul className="text-left space-y-1">
-            <li>• Thresholds and notifications are managed in the integration settings</li>
-            <li>• Tier 1 actions execute immediately during a power outage</li>
-            <li>• Tier 2 actions execute when battery drops below threshold</li>
-            <li>• Device states are automatically saved and restored when grid returns</li>
-            <li>• Test by toggling the power outage sensor in Developer Tools</li>
-          </ul>
-        </div>
         <button
           onClick={() => {
             dispatch({ type: 'SET_DEPLOYED', deployed: false })
-            setCurrentStep(WIZARD_STEPS[3])
+            setCurrentStep('dashboard')
           }}
-          className="mt-6 py-2.5 px-4 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          className="py-2.5 px-6 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors"
         >
-          Re-assign Devices
+          View Configuration Overview
         </button>
       </div>
     )

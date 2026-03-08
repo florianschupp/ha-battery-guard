@@ -6,7 +6,21 @@ import { ConnectionStep } from './steps/ConnectionStep'
 import { TierAssignmentStep } from './steps/TierAssignmentStep'
 import { RestoreStep } from './steps/RestoreStep'
 import { SummaryStep } from './steps/SummaryStep'
-import { connectFromPanel, isInsidePanel } from './services/ha-websocket'
+import { DashboardView } from './steps/DashboardView'
+import { connectFromPanel, isInsidePanel, listEntities } from './services/ha-websocket'
+import { BATTERY_GUARD_LABEL_IDS } from './lib/constants'
+
+/** Quick check if any entities have Battery Guard labels (= already configured) */
+async function hasExistingConfig(): Promise<boolean> {
+  try {
+    const entities = await listEntities()
+    return entities.some((e) =>
+      e.labels?.some((l: string) => BATTERY_GUARD_LABEL_IDS.includes(l)),
+    )
+  } catch {
+    return false
+  }
+}
 
 function WizardRouter() {
   const { currentStep, dispatch, setCurrentStep } = useWizard()
@@ -19,10 +33,14 @@ function WizardRouter() {
     let cancelled = false
 
     connectFromPanel()
-      .then(() => {
+      .then(async () => {
         if (cancelled) return
         dispatch({ type: 'SET_CONNECTED', connected: true })
-        setCurrentStep('discovery')
+
+        // Check if already configured → go to dashboard
+        const configured = await hasExistingConfig()
+        if (cancelled) return
+        setCurrentStep(configured ? 'dashboard' : 'discovery')
       })
       .catch((err) => {
         if (cancelled) return
@@ -58,6 +76,8 @@ function WizardRouter() {
       return <RestoreStep />
     case 'summary':
       return <SummaryStep />
+    case 'dashboard':
+      return <DashboardView />
     default:
       return <ConnectionStep />
   }
