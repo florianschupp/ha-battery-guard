@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWizard } from '../hooks/useWizard'
 import {
+  applyAssignments,
   discoverAreas,
   discoverEntities,
   getCurrentAssignments,
   loadDeviceActions,
   loadRestoreConfig,
 } from '../services/entity-service'
+import {
+  setDeviceActions,
+  setRestoreConfig,
+} from '../services/ha-websocket'
 import { WIZARD_STEPS } from '../types/wizard-types'
 import type { WizardEntity, ActionConfig } from '../types/wizard-types'
 import {
@@ -139,6 +144,7 @@ export function TierAssignmentStep() {
   )
   const [collapsedAreas, setCollapsedAreas] = useState<Set<string>>(new Set())
   const [highlightedEntity, setHighlightedEntity] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const scrollDoneRef = useRef(false)
 
   const loadEntities = useCallback(async () => {
@@ -201,6 +207,21 @@ export function TierAssignmentStep() {
     // Clear the focused entity
     dispatch({ type: 'SET_FOCUSED_ENTITY', entityId: undefined })
   }, [config.focusedEntityId, loading, dispatch])
+
+  /** Quick-save: apply labels, device actions, and restore config, then return to dashboard */
+  async function quickSave() {
+    setSaving(true)
+    try {
+      await applyAssignments(config.entities, config.assignments)
+      try { await setDeviceActions(config.deviceActions) } catch { /* pre-v2 fallback */ }
+      try { await setRestoreConfig(config.restoreConfig) } catch { /* pre-v2 fallback */ }
+      dispatch({ type: 'SET_DEPLOYED', deployed: true })
+      setCurrentStep('dashboard')
+    } catch (err) {
+      console.error('Quick save failed:', err)
+      setSaving(false)
+    }
+  }
 
   /** Toggle a tier for an entity */
   function toggleTier(entityId: string, tierId: string) {
@@ -405,6 +426,15 @@ export function TierAssignmentStep() {
               className="py-2 px-4 bg-gray-400 hover:bg-gray-500 text-white font-medium rounded-lg transition-colors text-sm"
             >
               Ignore rest ({unassignedCount})
+            </button>
+          )}
+          {config.deployed && (
+            <button
+              onClick={quickSave}
+              disabled={saving}
+              className="py-2 px-4 border border-green-300 text-green-700 font-medium rounded-lg hover:bg-green-50 transition-colors text-sm disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save & Return'}
             </button>
           )}
           <button

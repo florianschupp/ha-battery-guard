@@ -58,9 +58,8 @@ function DomainIcon({ domain, className }: { domain: string; className?: string 
 }
 
 /** Battery level icon for tier section headers */
-function BatteryIcon({ level, className }: { level: 1 | 2 | 3; className?: string }) {
+function BatteryIcon({ level, fillColor, className }: { level: 1 | 2 | 3; fillColor: string; className?: string }) {
   const cls = className || 'w-5 h-5'
-  const fillColor = level === 1 ? '#f43f5e' : level === 2 ? '#f59e0b' : '#10b981'
   const fills = { 1: { y: 16, h: 3 }, 2: { y: 12, h: 7 }, 3: { y: 6, h: 13 } }
   const { y, h } = fills[level]
 
@@ -285,8 +284,9 @@ const TIER_SECTIONS = [
     key: 'tier1',
     title: 'Tier 1',
     label: 'Immediate Response',
-    subtitle: 'These devices are switched immediately when a power outage is detected.',
-    batteryLevel: 1 as const,
+    subtitle: 'These appliances are switched immediately when a power outage is detected.',
+    batteryLevel: 3 as const,
+    batteryColor: '#f43f5e',
     showActions: true,
   },
   {
@@ -294,8 +294,9 @@ const TIER_SECTIONS = [
     key: 'tier2',
     title: 'Tier 2',
     label: 'Low Battery',
-    subtitle: 'These devices are switched when battery drops below the configured threshold.',
+    subtitle: 'These appliances are switched when battery drops below the configured threshold.',
     batteryLevel: 2 as const,
+    batteryColor: '#f59e0b',
     showActions: true,
   },
   {
@@ -303,8 +304,9 @@ const TIER_SECTIONS = [
     key: 'tier3',
     title: 'Tier 3',
     label: 'Critical Infrastructure',
-    subtitle: 'These devices are never turned off and run until total power loss.',
-    batteryLevel: 3 as const,
+    subtitle: 'These appliances are never turned off and run until total power loss.',
+    batteryLevel: 1 as const,
+    batteryColor: '#10b981',
     showActions: false,
   },
 ] as const
@@ -409,6 +411,7 @@ export function DashboardView() {
               <div className="flex items-center gap-2.5 mb-1">
                 <BatteryIcon
                   level={section.batteryLevel}
+                  fillColor={section.batteryColor}
                   className="w-5 h-5 text-gray-500"
                 />
                 <h3 className="text-sm font-semibold text-gray-800">
