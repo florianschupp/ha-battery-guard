@@ -130,6 +130,23 @@ export async function loadRestoreConfig(): Promise<RestoreConfig> {
 }
 
 /**
+ * Apply tier assignment for a single entity.
+ * Preserves non-Battery-Guard labels.
+ */
+export async function applySingleAssignment(
+  entity: WizardEntity,
+  newTiers: string[],
+): Promise<void> {
+  const preservedLabels = entity.labels.filter(
+    (l) =>
+      !BATTERY_GUARD_LABEL_IDS.includes(l) && !(l in LABEL_MIGRATION_MAP),
+  )
+  await updateEntity(entity.entity_id, {
+    labels: [...preservedLabels, ...newTiers],
+  })
+}
+
+/**
  * Apply tier assignments to entities via the HA entity registry.
  * Supports multi-label: an entity can have multiple Battery Guard labels.
  * Preserves non-Battery-Guard labels on each entity.

@@ -50,21 +50,21 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
       {!isDashboard && (
         <nav className="bg-white border-b border-gray-100 px-6 py-3">
           <div className="max-w-5xl mx-auto">
-            <ol className="flex items-center gap-2">
+            <ol className="flex items-center justify-between sm:justify-start sm:gap-2">
               {WIZARD_STEPS.map((step, index) => {
                 const isActive = index === currentIndex
                 const isCompleted = index < currentIndex
 
                 return (
-                  <li key={step} className="flex items-center gap-2">
+                  <li key={step} className="flex items-center gap-1 sm:gap-2">
                     {index > 0 && (
                       <div
-                        className={`w-8 h-px ${isCompleted ? 'bg-blue-500' : 'bg-gray-200'}`}
+                        className={`w-4 sm:w-8 h-px ${isCompleted ? 'bg-blue-500' : 'bg-gray-200'}`}
                       />
                     )}
                     <div className="flex items-center gap-1.5">
                       <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${
                           isActive
                             ? 'bg-blue-500 text-white'
                             : isCompleted
@@ -91,7 +91,7 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
                         )}
                       </div>
                       <span
-                        className={`text-sm ${
+                        className={`text-sm hidden sm:inline ${
                           isActive
                             ? 'font-medium text-gray-900'
                             : isCompleted

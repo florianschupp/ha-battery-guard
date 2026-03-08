@@ -1,14 +1,14 @@
 # Battery Guard for Home Assistant
 
-> **Note:** This integration was built for a specific home setup (Huawei SUN2000 + LUNA2000 battery + BackupBox with Shelly 3EM voltage monitoring). It should work with other PV battery systems that expose SOC and grid status sensors in Home Assistant, but has only been tested with this configuration. Use at your own risk and feel free to adapt it to your needs.
+> **Note:** Built and tested with Huawei SUN2000 + LUNA2000 + BackupBox. Should work with any PV battery system that exposes SOC and grid status sensors in Home Assistant. Also suitable for off-grid (island) setups. Use at your own risk and feel free to adapt it to your needs.
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![GitHub Release](https://img.shields.io/github/v/release/florianschupp/ha-battery-guard)](https://github.com/florianschupp/ha-battery-guard/releases)
 [![License: MIT](https://img.shields.io/github/license/florianschupp/ha-battery-guard)](LICENSE)
 
-**Automatic device management during power outages for PV battery systems.**
+**Smart appliance management based on battery capacity.**
 
-Battery Guard monitors your PV battery system and automatically manages non-essential devices in tiers when a power outage is detected, preserving battery power for critical loads.
+Battery Guard monitors your PV battery system and automatically manages non-essential appliances in priority tiers when a power outage is detected — or when running off-grid — preserving battery power for critical loads.
 
 ---
 
@@ -16,14 +16,14 @@ Battery Guard monitors your PV battery system and automatically manages non-esse
 
 | | Feature | Description |
 |---|---------|-------------|
-| ⚡ | **3-tier priority system** | Assign devices to tiers based on importance |
-| 🎛️ | **Graduated emergency actions** | Per-device, per-tier actions: set HVAC mode, dim lights, set temperature, or turn off |
+| ⚡ | **3-tier priority system** | Assign appliances to tiers based on importance |
+| 🎛️ | **Graduated emergency actions** | Per-appliance, per-tier actions: set HVAC mode, dim lights, set temperature, or turn off |
 | 🔌 | **Automatic outage detection** | Via grid status sensor or voltage monitoring (Shelly 3EM) |
 | 🔋 | **SOC-based tier management** | Tier 2 actions execute when battery drops below threshold |
-| 💾 | **State save & restore** | Device states are captured before action and fully restored when grid returns |
+| 💾 | **State save & restore** | Appliance states are captured before action and fully restored when grid returns |
 | 📈 | **Hysteresis control** | Separate shutdown and recovery thresholds prevent oscillation |
 | 🔔 | **Flexible notifications** | Push notifications + persistent HA notifications |
-| 🧙 | **Built-in device wizard** | Sidebar panel with inline tier buttons and domain-aware action config |
+| 🧙 | **Built-in setup wizard** | Sidebar panel with inline tier buttons and domain-aware action config |
 
 ---
 
@@ -39,9 +39,9 @@ Battery > 40% ──► Tier 2 devices restored
 Grid Restored ──► All devices restored to pre-outage state
 ```
 
-**Tier 3** devices (router, security cameras, freezer) are never turned off.
+**Tier 3** appliances (router, security cameras, freezer) are never turned off — they are protected.
 
-Devices can be in **multiple tiers** with different actions. Example: an air conditioner switches to fan-only mode in Tier 1 and turns off completely in Tier 2.
+Appliances can be in **multiple tiers** with different actions. Example: an air conditioner switches to fan-only mode in Tier 1 and turns off completely in Tier 2.
 
 ---
 
@@ -81,10 +81,10 @@ The config flow guides you through:
 
 ### Device Assignment
 
-Open **Battery Guard** in the sidebar to assign devices using the built-in wizard:
+Open **Battery Guard** in the sidebar to assign appliances using the built-in wizard:
 
 - Click **T1**, **T2**, **T3**, or **—** (Ignore) per device
-- Climate and light devices can be in both T1 and T2 with different actions
+- Climate and light appliances can be in both T1 and T2 with different actions
 - Use the inline dropdowns to configure HVAC mode, temperature, or brightness
 
 See the full [User Guide](docs/USER_GUIDE.md) for detailed instructions.
@@ -97,7 +97,7 @@ Go to **Settings → Devices & Services → Battery Guard → Configure** to cha
 
 ## Supported Hardware
 
-Battery Guard works with any PV battery system that exposes:
+Battery Guard works with any PV battery system that exposes sensors in Home Assistant:
 
 - A **state-of-charge (SOC)** sensor (e.g., via Modbus)
 - A **grid connection status** sensor, or **per-phase voltage sensors** (e.g., Shelly 3EM)
@@ -113,7 +113,7 @@ Tested with: **Huawei SUN2000** inverter + **LUNA2000** battery + **BackupBox**
 | Entity | Type | Description |
 |:-------|:-----|:------------|
 | Power Outage | `binary_sensor` | Detects grid power loss |
-| Unassigned Devices | `sensor` | Counts devices not assigned to any tier |
+| Unassigned Appliances | `sensor` | Counts appliances not assigned to any tier |
 | Tier 2 Shutdown Threshold | `number` | SOC level that triggers Tier 2 actions |
 | Tier 2 Recovery Threshold | `number` | SOC level that restores Tier 2 devices |
 | Battery Guard Active | `switch` | Emergency mode on/off |
@@ -124,9 +124,9 @@ Tested with: **Huawei SUN2000** inverter + **LUNA2000** battery + **BackupBox**
 
 | Service | Description |
 |:--------|:------------|
-| `battery_guard.tier_off` | Execute configured actions for all devices in a tier |
-| `battery_guard.tier_on` | Restore devices in a tier to their saved state |
-| `battery_guard.restore_all` | Restore all devices and reset emergency mode |
+| `battery_guard.tier_off` | Execute configured actions for all appliances in a tier |
+| `battery_guard.tier_on` | Restore appliances in a tier to their saved state |
+| `battery_guard.restore_all` | Restore all appliances and reset emergency mode |
 | `battery_guard.notify` | Send notification via configured services |
 
 ### Supported Actions per Domain

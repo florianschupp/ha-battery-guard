@@ -6,7 +6,16 @@ import {
   getCurrentAssignments,
   loadDeviceActions,
   loadRestoreConfig,
+  applySingleAssignment,
 } from '../services/entity-service'
+import {
+  setDeviceActions as saveDeviceActions,
+  setRestoreConfig as saveRestoreConfig,
+} from '../services/ha-websocket'
+import {
+  DOMAIN_ACTIONS,
+  HVAC_MODES,
+} from '../lib/constants'
 import type { ActionConfig, WizardEntity } from '../types/wizard-types'
 
 /** Domain-specific SVG icon */
@@ -277,6 +286,360 @@ function EntityCard({
   )
 }
 
+// ============================================================================
+// Tier helpers & pill button (shared with modal)
+// ============================================================================
+
+const TIER_PILLS = [
+  { id: 'battery_guard_tier1', short: 'T1' },
+  { id: 'battery_guard_tier2', short: 'T2' },
+  { id: 'battery_guard_tier3', short: 'T3' },
+  { id: 'battery_guard_ignore', short: '\u2014' },
+] as const
+
+function isActionTier(tierId: string): boolean {
+  return tierId === 'battery_guard_tier1' || tierId === 'battery_guard_tier2'
+}
+
+function tierToActionKey(tierId: string): 'tier1' | 'tier2' {
+  return tierId === 'battery_guard_tier1' ? 'tier1' : 'tier2'
+}
+
+function hasConfigurableActions(domain: string): boolean {
+  const actions = DOMAIN_ACTIONS[domain]
+  return !!actions && actions.length > 1
+}
+
+function TierPillButton({
+  pillId,
+  short,
+  isActive,
+  onClick,
+}: {
+  pillId: string
+  short: string
+  isActive: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-10 h-9 rounded-md text-xs font-bold transition-all ${
+        isActive
+          ? pillId === 'battery_guard_tier1'
+            ? 'bg-red-500 text-white shadow-sm'
+            : pillId === 'battery_guard_tier2'
+              ? 'bg-amber-500 text-white shadow-sm'
+              : pillId === 'battery_guard_tier3'
+                ? 'bg-green-500 text-white shadow-sm'
+                : 'bg-gray-500 text-white shadow-sm'
+          : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-gray-600'
+      }`}
+    >
+      {short}
+    </button>
+  )
+}
+
+/** Inline action config dropdowns */
+function ActionConfigRow({
+  domain,
+  tierLabel,
+  tierColor,
+  action,
+  onChange,
+}: {
+  domain: string
+  tierLabel: string
+  tierColor: string
+  action: ActionConfig
+  onChange: (action: ActionConfig) => void
+}) {
+  const actions = DOMAIN_ACTIONS[domain] || [
+    { value: 'turn_off', label: 'Turn off' },
+  ]
+
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className={`font-bold ${tierColor} shrink-0`}>{tierLabel}:</span>
+      <select
+        value={action.action}
+        onChange={(e) => {
+          const newAction: ActionConfig = { action: e.target.value }
+          if (e.target.value === 'set_hvac_mode') newAction.hvac_mode = 'fan_only'
+          else if (e.target.value === 'dim') newAction.brightness_pct = 20
+          else if (e.target.value === 'set_temperature') newAction.temperature = 18
+          onChange(newAction)
+        }}
+        className="border border-gray-200 rounded px-2 py-1.5 text-sm bg-white"
+      >
+        {actions.map((a) => (
+          <option key={a.value} value={a.value}>{a.label}</option>
+        ))}
+      </select>
+
+      {action.action === 'set_hvac_mode' && (
+        <select
+          value={String(action.hvac_mode || 'fan_only')}
+          onChange={(e) => onChange({ ...action, hvac_mode: e.target.value })}
+          className="border border-gray-200 rounded px-2 py-1.5 text-sm bg-white"
+        >
+          {HVAC_MODES.map((m) => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
+      )}
+
+      {action.action === 'set_temperature' && (
+        <div className="flex items-center gap-1">
+          <input
+            type="number" min={10} max={35} step={0.5}
+            value={Number(action.temperature) || 18}
+            onChange={(e) => onChange({ ...action, temperature: parseFloat(e.target.value) })}
+            className="w-16 border border-gray-200 rounded px-2 py-1.5 text-sm bg-white"
+          />
+          <span className="text-gray-400 text-sm">\u00b0C</span>
+        </div>
+      )}
+
+      {action.action === 'dim' && (
+        <div className="flex items-center gap-1">
+          <input
+            type="number" min={1} max={100}
+            value={Number(action.brightness_pct) || 20}
+            onChange={(e) => onChange({ ...action, brightness_pct: parseInt(e.target.value, 10) })}
+            className="w-16 border border-gray-200 rounded px-2 py-1.5 text-sm bg-white"
+          />
+          <span className="text-gray-400 text-sm">%</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// Entity Edit Modal
+// ============================================================================
+
+function EntityEditModal({
+  entity,
+  areaName,
+  initialTiers,
+  initialActions,
+  initialRestoreConfig,
+  onSave,
+  onClose,
+}: {
+  entity: WizardEntity
+  areaName: string | null
+  initialTiers: string[]
+  initialActions: Record<string, ActionConfig>
+  initialRestoreConfig: { stayOff: boolean; customDelay: number | null }
+  onSave: (tiers: string[], actions: Record<string, ActionConfig>, restoreMode: { stayOff: boolean; customDelay: number | null }) => Promise<void>
+  onClose: () => void
+}) {
+  const [tiers, setTiers] = useState<string[]>(initialTiers)
+  const [actions, setActions] = useState<Record<string, ActionConfig>>(initialActions)
+  const [restoreMode, setRestoreMode] = useState<'standard' | 'stay_off' | 'custom'>(
+    initialRestoreConfig.stayOff ? 'stay_off' : initialRestoreConfig.customDelay !== null ? 'custom' : 'standard'
+  )
+  const [customDelay, setCustomDelay] = useState(initialRestoreConfig.customDelay ?? 30)
+  const [saving, setSaving] = useState(false)
+
+  function toggleTier(tierId: string) {
+    setTiers((prev) => {
+      if (isActionTier(tierId)) {
+        const withoutExclusive = prev.filter(
+          (t) => t !== 'battery_guard_tier3' && t !== 'battery_guard_ignore',
+        )
+        if (withoutExclusive.includes(tierId)) {
+          const newTiers = withoutExclusive.filter((t) => t !== tierId)
+          // Clear action for removed tier
+          setActions((a) => {
+            const next = { ...a }
+            delete next[tierToActionKey(tierId)]
+            return next
+          })
+          return newTiers
+        }
+        // Add tier with default action
+        setActions((a) => ({ ...a, [tierToActionKey(tierId)]: { action: 'turn_off' } }))
+        return [...withoutExclusive, tierId]
+      }
+      // Exclusive tiers (T3, Ignore)
+      if (prev.length === 1 && prev[0] === tierId) return []
+      setActions({}) // Clear all actions
+      return [tierId]
+    })
+  }
+
+  const activeTiers = tiers.filter(isActionTier)
+  const showActions = hasConfigurableActions(entity.domain) && activeTiers.length > 0
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await onSave(
+        tiers,
+        actions,
+        {
+          stayOff: restoreMode === 'stay_off',
+          customDelay: restoreMode === 'custom' ? customDelay : null,
+        },
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="fixed inset-0 bg-black/30" />
+      <div
+        className="relative bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 pt-5 pb-3">
+          <div className="flex items-start gap-3">
+            <DomainIcon domain={entity.domain} className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-semibold text-gray-900 truncate">
+                {entity.friendly_name}
+              </h3>
+              {areaName && (
+                <p className="text-xs text-gray-400">{areaName}</p>
+              )}
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 -mt-1 -mr-1">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100" />
+
+        {/* Tier selection */}
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 block">
+              Tier
+            </label>
+            <div className="flex gap-1.5">
+              {TIER_PILLS.map((pill) => (
+                <TierPillButton
+                  key={pill.id}
+                  pillId={pill.id}
+                  short={pill.short}
+                  isActive={tiers.includes(pill.id)}
+                  onClick={() => toggleTier(pill.id)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Action config */}
+          {showActions && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 block">
+                Actions
+              </label>
+              <div className="space-y-2">
+                {activeTiers.map((tierId) => {
+                  const actionKey = tierToActionKey(tierId)
+                  const currentAction = actions[actionKey] || { action: 'turn_off' }
+                  const tierLabel = tierId === 'battery_guard_tier1' ? 'T1' : 'T2'
+                  const tierColor = tierId === 'battery_guard_tier1' ? 'text-red-600' : 'text-amber-600'
+                  return (
+                    <ActionConfigRow
+                      key={tierId}
+                      domain={entity.domain}
+                      tierLabel={tierLabel}
+                      tierColor={tierColor}
+                      action={currentAction}
+                      onChange={(action) => setActions((a) => ({ ...a, [actionKey]: action }))}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Restore mode */}
+          {tiers.some(isActionTier) && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 block">
+                Restore
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio" name="restore" value="standard"
+                    checked={restoreMode === 'standard'}
+                    onChange={() => setRestoreMode('standard')}
+                    className="text-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Standard</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio" name="restore" value="stay_off"
+                    checked={restoreMode === 'stay_off'}
+                    onChange={() => setRestoreMode('stay_off')}
+                    className="text-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Do Not Restore</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio" name="restore" value="custom"
+                    checked={restoreMode === 'custom'}
+                    onChange={() => setRestoreMode('custom')}
+                    className="text-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Custom Delay</span>
+                  {restoreMode === 'custom' && (
+                    <div className="flex items-center gap-1 ml-1">
+                      <input
+                        type="number" min={0} max={600} step={5}
+                        value={customDelay}
+                        onChange={(e) => setCustomDelay(parseInt(e.target.value, 10) || 0)}
+                        className="w-16 border border-gray-200 rounded px-2 py-1 text-sm bg-white"
+                      />
+                      <span className="text-xs text-gray-400">s</span>
+                    </div>
+                  )}
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-gray-100" />
+
+        {/* Footer */}
+        <div className="px-5 py-3 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="py-2 px-4 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || tiers.length === 0}
+            className="py-2 px-4 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors text-sm"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Tier section config */
 const TIER_SECTIONS = [
   {
@@ -314,6 +677,7 @@ const TIER_SECTIONS = [
 export function DashboardView() {
   const { config, dispatch, setCurrentStep } = useWizard()
   const [loading, setLoading] = useState(true)
+  const [editEntity, setEditEntity] = useState<WizardEntity | null>(null)
 
   const loadAllData = useCallback(async () => {
     setLoading(true)
@@ -460,10 +824,7 @@ export function DashboardView() {
                           restoreMode={getRestoreMode(entity.entity_id)}
                           showAction={section.showActions}
                           areaName={areaName}
-                          onClick={() => {
-                            dispatch({ type: 'SET_FOCUSED_ENTITY', entityId: entity.entity_id })
-                            setCurrentStep('assignment')
-                          }}
+                          onClick={() => setEditEntity(entity)}
                         />
                       )
                     })}
@@ -525,6 +886,62 @@ export function DashboardView() {
           })}
         </div>
       </div>
+
+      {/* Inline edit modal */}
+      {editEntity && (
+        <EntityEditModal
+          entity={editEntity}
+          areaName={editEntity.area_id ? config.areas[editEntity.area_id] || null : null}
+          initialTiers={config.assignments[editEntity.entity_id] || []}
+          initialActions={config.deviceActions[editEntity.entity_id] || {}}
+          initialRestoreConfig={{
+            stayOff: config.restoreConfig.stay_off.includes(editEntity.entity_id),
+            customDelay: config.restoreConfig.device_delays?.[editEntity.entity_id] ?? null,
+          }}
+          onSave={async (newTiers, newActions, restoreOpts) => {
+            const entityId = editEntity.entity_id
+
+            // 1. Update entity labels in HA
+            await applySingleAssignment(editEntity, newTiers)
+
+            // 2. Update device actions
+            const updatedDeviceActions = { ...config.deviceActions }
+            if (Object.keys(newActions).length > 0) {
+              updatedDeviceActions[entityId] = newActions
+            } else {
+              delete updatedDeviceActions[entityId]
+            }
+            dispatch({ type: 'SET_DEVICE_ACTIONS', deviceActions: updatedDeviceActions })
+            try { await saveDeviceActions(updatedDeviceActions) } catch { /* pre-v2 */ }
+
+            // 3. Update restore config
+            const updatedRestoreConfig = { ...config.restoreConfig }
+            // Handle stay_off
+            const stayOffSet = new Set(updatedRestoreConfig.stay_off)
+            if (restoreOpts.stayOff) {
+              stayOffSet.add(entityId)
+            } else {
+              stayOffSet.delete(entityId)
+            }
+            updatedRestoreConfig.stay_off = [...stayOffSet]
+            // Handle custom delay
+            const delays = { ...updatedRestoreConfig.device_delays }
+            if (restoreOpts.customDelay !== null) {
+              delays[entityId] = restoreOpts.customDelay
+            } else {
+              delete delays[entityId]
+            }
+            updatedRestoreConfig.device_delays = delays
+            dispatch({ type: 'SET_RESTORE_CONFIG', restoreConfig: updatedRestoreConfig })
+            try { await saveRestoreConfig(updatedRestoreConfig) } catch { /* pre-v2 */ }
+
+            // 4. Close modal and reload data
+            setEditEntity(null)
+            loadAllData()
+          }}
+          onClose={() => setEditEntity(null)}
+        />
+      )}
     </div>
   )
 }

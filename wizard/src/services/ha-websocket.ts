@@ -29,24 +29,29 @@ export async function connect(
  * Since the iframe is served from HA's own static files (same origin),
  * we can directly access the parent window's <home-assistant> element
  * to read the auth token. No postMessage handshake needed.
+ *
+ * Retries up to 5 times with 500ms delay to handle race conditions where
+ * the iframe loads before HA's frontend has fully initialized.
  */
 export async function connectFromPanel(): Promise<Connection> {
-  // Access HA's hass object via same-origin parent DOM
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const haElement = window.parent.document.querySelector('home-assistant') as any
-  if (!haElement?.hass) {
-    throw new Error('Could not access Home Assistant element in parent frame')
+  const MAX_RETRIES = 5
+  const RETRY_DELAY_MS = 500
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const haElement = window.parent.document.querySelector('home-assistant') as any
+    if (haElement?.hass?.auth?.accessToken) {
+      const hass = haElement.hass
+      const hassUrl = hass.auth.data?.hassUrl || window.location.origin
+      return connect(hassUrl, hass.auth.accessToken)
+    }
+
+    if (attempt < MAX_RETRIES) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS))
+    }
   }
 
-  const hass = haElement.hass
-  const hassUrl = hass.auth?.data?.hassUrl || window.location.origin
-  const accessToken = hass.auth?.accessToken
-
-  if (!accessToken) {
-    throw new Error('No access token available from Home Assistant')
-  }
-
-  return connect(hassUrl, accessToken)
+  throw new Error('Could not access Home Assistant after retries')
 }
 
 /** Check if running inside an HA panel iframe */
