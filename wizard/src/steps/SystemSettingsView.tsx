@@ -79,11 +79,6 @@ export function SystemSettingsView() {
     }
   }
 
-  const updateThreshold = (key: keyof SystemConfig, value: number) => {
-    setLocalConfig((prev) => ({ ...prev, [key]: value }))
-    setSaved(false)
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -143,83 +138,24 @@ export function SystemSettingsView() {
         </div>
         <div className="px-5 py-4">
           <p className="text-xs text-gray-500 mb-5">
-            During a power outage, Battery Guard executes device actions in stages as the battery level drops.
+            During a power outage, Battery Guard executes device actions in stages based on battery level.
             If the battery is already below a threshold when the outage starts, all applicable stages trigger immediately.
           </p>
 
-          <div className="space-y-0">
-            {/* Stage 1: Outage Detected */}
-            <div className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <div className="w-7 h-7 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center text-xs font-bold shrink-0">1</div>
-                <div className="w-px flex-1 bg-gray-200 my-1" />
-              </div>
-              <div className="pb-5 flex-1">
-                <p className="text-sm font-medium text-gray-700">Power Outage Detected</p>
-                <p className="text-xs text-gray-400 mt-0.5">Tier 1 actions execute immediately (low-priority devices)</p>
-              </div>
-            </div>
-
-            {/* Stage 2: Tier 2 Threshold */}
-            <div className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-bold shrink-0">2</div>
-                <div className="w-px flex-1 bg-gray-200 my-1" />
-              </div>
-              <div className="pb-4 flex-1">
-                <ThresholdInput
-                  label="Tier 2 Actions"
-                  description="Execute Tier 2 device actions when battery drops below this level"
-                  value={config.tier2_threshold}
-                  min={10}
-                  max={90}
-                  step={5}
-                  onChange={(v) => updateThreshold('tier2_threshold', v)}
-                />
-              </div>
-            </div>
-
-            {/* Stage 3: Critical SOC */}
-            <div className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <div className="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold shrink-0">3</div>
-                <div className="w-px flex-1 bg-gray-200 my-1" />
-              </div>
-              <div className="pb-4 flex-1">
-                <ThresholdInput
-                  label="Critical Battery"
-                  description="Emergency alert — only Tier 3 (critical) devices remain active"
-                  value={config.critical_soc}
-                  min={5}
-                  max={30}
-                  step={1}
-                  onChange={(v) => updateThreshold('critical_soc', v)}
-                />
-              </div>
-            </div>
-
-            {/* Recovery */}
-            <div className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <div className="w-7 h-7 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
-                  </svg>
-                </div>
-              </div>
-              <div className="pb-1 flex-1">
-                <ThresholdInput
-                  label="Tier 2 Recovery"
-                  description="Reverse Tier 2 actions when battery recovers above this level (must be higher than T2 threshold to prevent flicker)"
-                  value={config.recovery_threshold}
-                  min={10}
-                  max={90}
-                  step={5}
-                  onChange={(v) => updateThreshold('recovery_threshold', v)}
-                />
-              </div>
-            </div>
-          </div>
+          <BatteryStageSlider
+            critical={config.critical_soc}
+            tier2={config.tier2_threshold}
+            recovery={config.recovery_threshold}
+            onChange={({ critical, tier2, recovery }) => {
+              setLocalConfig((prev) => ({
+                ...prev,
+                critical_soc: critical,
+                tier2_threshold: tier2,
+                recovery_threshold: recovery,
+              }))
+              setSaved(false)
+            }}
+          />
         </div>
       </div>
 
@@ -294,51 +230,221 @@ function SensorRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-/** Editable threshold input with label, description, and range */
-function ThresholdInput({
-  label,
-  description,
-  value,
-  min,
-  max,
-  step,
+/** Multi-range battery slider with colored zones and three drag handles */
+function BatteryStageSlider({
+  critical,
+  tier2,
+  recovery,
   onChange,
 }: {
-  label: string
-  description: string
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange: (value: number) => void
+  critical: number
+  tier2: number
+  recovery: number
+  onChange: (values: { critical: number; tier2: number; recovery: number }) => void
 }) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const activeHandle = useRef<'critical' | 'tier2' | 'recovery' | null>(null)
+
+  const snap = (value: number, step: number) => Math.round(value / step) * step
+
+  const clampAndUpdate = (handle: 'critical' | 'tier2' | 'recovery', rawPct: number) => {
+    let value: number
+    switch (handle) {
+      case 'critical':
+        value = snap(Math.max(5, Math.min(rawPct, tier2 - 1)), 1)
+        onChange({ critical: value, tier2, recovery })
+        break
+      case 'tier2':
+        value = snap(Math.max(critical + 5, Math.min(rawPct, recovery - 5)), 5)
+        onChange({ critical, tier2: value, recovery })
+        break
+      case 'recovery':
+        value = snap(Math.max(tier2 + 5, Math.min(rawPct, 95)), 5)
+        onChange({ critical, tier2, recovery: value })
+        break
+    }
+  }
+
+  const pctFromPointer = (clientX: number) => {
+    if (!trackRef.current) return 0
+    const rect = trackRef.current.getBoundingClientRect()
+    return Math.round(((clientX - rect.left) / rect.width) * 100)
+  }
+
+  const handlePointerDown = (handle: 'critical' | 'tier2' | 'recovery') =>
+    (e: React.PointerEvent) => {
+      e.preventDefault()
+      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+      activeHandle.current = handle
+    }
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!activeHandle.current) return
+    clampAndUpdate(activeHandle.current, pctFromPointer(e.clientX))
+  }
+
+  const handlePointerUp = () => {
+    activeHandle.current = null
+  }
+
+  const handleNumberInput = (handle: 'critical' | 'tier2' | 'recovery', raw: string) => {
+    const v = Number(raw)
+    if (Number.isNaN(v)) return
+    clampAndUpdate(handle, v)
+  }
+
+  const zones = [
+    { from: 0, to: critical, color: 'bg-red-400' },
+    { from: critical, to: tier2, color: 'bg-orange-400' },
+    { from: tier2, to: recovery, color: 'bg-yellow-300' },
+    { from: recovery, to: 100, color: 'bg-blue-400' },
+  ]
+
+  const handles: { key: 'critical' | 'tier2' | 'recovery'; pct: number; color: string }[] = [
+    { key: 'critical', pct: critical, color: 'bg-red-500 ring-red-200' },
+    { key: 'tier2', pct: tier2, color: 'bg-orange-500 ring-orange-200' },
+    { key: 'recovery', pct: recovery, color: 'bg-green-500 ring-green-200' },
+  ]
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <label className="text-sm font-medium text-gray-700">{label}</label>
-        <div className="flex items-center gap-1.5">
-          <input
-            type="number"
-            value={value}
-            min={min}
-            max={max}
-            step={step}
-            onChange={(e) => onChange(Number(e.target.value))}
-            className="w-16 text-right text-sm border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-          <span className="text-sm text-gray-400">%</span>
+    <div className="select-none">
+      {/* Slider track */}
+      <div className="px-3">
+        <div className="flex justify-between text-[10px] text-gray-400 mb-1.5">
+          <span>0%</span>
+          <span>100%</span>
+        </div>
+        <div
+          ref={trackRef}
+          className="relative h-6 cursor-pointer"
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        >
+          {/* Colored zone segments */}
+          <div className="absolute inset-0 rounded-full overflow-hidden flex">
+            {zones.map((z, i) => (
+              <div
+                key={i}
+                className={`${z.color} h-full transition-all duration-75`}
+                style={{ width: `${z.to - z.from}%` }}
+              />
+            ))}
+          </div>
+
+          {/* Drag handles */}
+          {handles.map(({ key, pct, color }) => (
+            <div
+              key={key}
+              className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 rounded-full ${color} ring-2 shadow-md cursor-grab active:cursor-grabbing touch-none`}
+              style={{ left: `${pct}%` }}
+              onPointerDown={handlePointerDown(key)}
+            >
+              <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-medium text-gray-600 whitespace-nowrap">
+                {pct}%
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-      <p className="text-xs text-gray-400">{description}</p>
-      <input
-        type="range"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full mt-2 accent-blue-500"
-      />
+
+      {/* Legend */}
+      <div className="mt-6 space-y-3">
+        <ZoneLegendRow
+          color="bg-red-400"
+          label="Critical"
+          range={`0 – ${critical}%`}
+          description="Emergency — only Tier 3 (critical) devices remain active"
+          inputValue={critical}
+          onInput={(v) => handleNumberInput('critical', v)}
+          step={1}
+          min={5}
+          max={tier2 - 1}
+        />
+        <ZoneLegendRow
+          color="bg-orange-400"
+          label="Tier 2"
+          range={`${critical} – ${tier2}%`}
+          description="Mid-priority device actions execute"
+          inputValue={tier2}
+          onInput={(v) => handleNumberInput('tier2', v)}
+          step={5}
+          min={critical + 5}
+          max={recovery - 5}
+        />
+        <ZoneLegendRow
+          color="bg-yellow-300"
+          label="Recovery Buffer"
+          range={`${tier2} – ${recovery}%`}
+          description="Hysteresis zone — prevents flicker between Tier 1 and Tier 2"
+          inputValue={recovery}
+          inputLabel="Recovery at"
+          onInput={(v) => handleNumberInput('recovery', v)}
+          step={5}
+          min={tier2 + 5}
+          max={95}
+        />
+        <ZoneLegendRow
+          color="bg-blue-400"
+          label="Tier 1"
+          range={`${recovery} – 100%`}
+          description="Low-priority device actions execute on outage detection"
+        />
+      </div>
+    </div>
+  )
+}
+
+/** Single row in the zone legend */
+function ZoneLegendRow({
+  color,
+  label,
+  range,
+  description,
+  inputValue,
+  inputLabel,
+  onInput,
+  step,
+  min,
+  max,
+}: {
+  color: string
+  label: string
+  range: string
+  description: string
+  inputValue?: number
+  inputLabel?: string
+  onInput?: (value: string) => void
+  step?: number
+  min?: number
+  max?: number
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <div className={`w-3 h-3 rounded-sm ${color} shrink-0 mt-0.5`} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <span className="text-sm font-medium text-gray-700">{label}</span>
+            <span className="text-xs text-gray-400 ml-2">{range}</span>
+          </div>
+          {onInput && inputValue !== undefined && (
+            <div className="flex items-center gap-1 shrink-0">
+              {inputLabel && <span className="text-xs text-gray-400">{inputLabel}</span>}
+              <input
+                type="number"
+                value={inputValue}
+                min={min}
+                max={max}
+                step={step}
+                onChange={(e) => onInput(e.target.value)}
+                className="w-14 text-right text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <span className="text-xs text-gray-400">%</span>
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-gray-400 mt-0.5">{description}</p>
+      </div>
     </div>
   )
 }
