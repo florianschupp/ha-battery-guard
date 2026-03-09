@@ -18,7 +18,7 @@ import {
 } from '../lib/constants'
 import type { ActionConfig, WizardEntity } from '../types/wizard-types'
 
-/** Domain-specific SVG icon */
+/** Domain-specific fallback SVG icon */
 function DomainIcon({ domain, className }: { domain: string; className?: string }) {
   const cls = className || 'w-4 h-4'
   switch (domain) {
@@ -64,6 +64,41 @@ function DomainIcon({ domain, className }: { domain: string; className?: string 
         </svg>
       )
   }
+}
+
+/**
+ * Entity icon — renders the HA entity icon via Iconify CDN.
+ * Falls back to DomainIcon if no icon is set or the image fails to load.
+ */
+function EntityIcon({
+  icon,
+  domain,
+  className,
+}: {
+  icon: string | null
+  domain: string
+  className?: string
+}) {
+  const [failed, setFailed] = useState(false)
+  const cls = className || 'w-4 h-4'
+
+  if (!icon || failed) {
+    return <DomainIcon domain={domain} className={className} />
+  }
+
+  // Parse "mdi:icon-name" → "icon-name"
+  const parts = icon.split(':')
+  const prefix = parts.length > 1 ? parts[0] : 'mdi'
+  const name = parts.length > 1 ? parts[1] : parts[0]
+
+  return (
+    <img
+      src={`https://api.iconify.design/${prefix}/${name}.svg?color=%239ca3af`}
+      alt=""
+      className={`${cls} shrink-0`}
+      onError={() => setFailed(true)}
+    />
+  )
 }
 
 /** Battery level icon for tier section headers */
@@ -240,7 +275,8 @@ function EntityCard({
       className="bg-white rounded-lg border border-gray-100 shadow-sm p-3 flex flex-col gap-1.5 cursor-pointer hover:border-gray-300 hover:shadow transition-all"
     >
       <div className="flex items-start gap-2 min-w-0">
-        <DomainIcon
+        <EntityIcon
+          icon={entity.icon}
           domain={entity.domain}
           className="w-4 h-4 text-gray-400 shrink-0 mt-0.5"
         />
@@ -502,7 +538,7 @@ function EntityEditModal({
         {/* Header */}
         <div className="px-5 pt-5 pb-3">
           <div className="flex items-start gap-3">
-            <DomainIcon domain={entity.domain} className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+            <EntityIcon icon={entity.icon} domain={entity.domain} className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
               <h3 className="text-base font-semibold text-gray-900 truncate">
                 {entity.friendly_name}

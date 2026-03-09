@@ -18,11 +18,12 @@ export async function discoverEntities(): Promise<WizardEntity[]> {
     getStates(),
   ])
 
-  const stateMap = new Map<string, { friendly_name: string }>();
+  const stateMap = new Map<string, { friendly_name: string; icon?: string }>();
   if (Array.isArray(states)) {
-    for (const s of states as Array<{ entity_id: string; attributes: { friendly_name?: string } }>) {
+    for (const s of states as Array<{ entity_id: string; attributes: { friendly_name?: string; icon?: string } }>) {
       stateMap.set(s.entity_id, {
         friendly_name: s.attributes?.friendly_name || s.entity_id,
+        icon: s.attributes?.icon,
       })
     }
   }
@@ -48,8 +49,12 @@ export async function discoverEntities(): Promise<WizardEntity[]> {
 
       const recommendation = getRecommendation(entry.entity_id, friendlyName)
 
+      // Prefer registry icon, fall back to state icon
+      const icon = entry.icon || stateInfo?.icon || null
+
       return {
         ...entry,
+        icon,
         domain,
         friendly_name: friendlyName,
         recommended_tier: recommendation?.tier ?? null,
