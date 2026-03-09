@@ -20,6 +20,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    CONF_BATTERY_MAX_SOC,
+    CONF_BATTERY_MIN_SOC,
     CONF_CRITICAL_SOC,
     CONF_DEVICE_ACTIONS,
     CONF_GRID_SENSOR,
@@ -32,6 +34,8 @@ from .const import (
     CONF_VOLTAGE_PHASE_A,
     CONF_VOLTAGE_PHASE_B,
     CONF_VOLTAGE_PHASE_C,
+    DEFAULT_BATTERY_MAX_SOC,
+    DEFAULT_BATTERY_MIN_SOC,
     DEFAULT_CRITICAL_SOC,
     DEFAULT_RESTORE_CONFIG,
     DEFAULT_TIER2_RECOVERY_THRESHOLD,
@@ -100,6 +104,8 @@ def ws_get_config(
                 CONF_RECOVERY_THRESHOLD, DEFAULT_TIER2_RECOVERY_THRESHOLD
             ),
             CONF_CRITICAL_SOC: data.get(CONF_CRITICAL_SOC, DEFAULT_CRITICAL_SOC),
+            CONF_BATTERY_MAX_SOC: data.get(CONF_BATTERY_MAX_SOC, DEFAULT_BATTERY_MAX_SOC),
+            CONF_BATTERY_MIN_SOC: data.get(CONF_BATTERY_MIN_SOC, DEFAULT_BATTERY_MIN_SOC),
             CONF_NOTIFY_SERVICES: data.get(CONF_NOTIFY_SERVICES, []),
         }
         break
@@ -147,6 +153,8 @@ async def ws_set_config(
         CONF_TIER2_THRESHOLD,
         CONF_RECOVERY_THRESHOLD,
         CONF_CRITICAL_SOC,
+        CONF_BATTERY_MAX_SOC,
+        CONF_BATTERY_MIN_SOC,
         CONF_NOTIFY_SERVICES,
     }
     new_data = {**entry.data}

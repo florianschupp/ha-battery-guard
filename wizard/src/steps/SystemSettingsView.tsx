@@ -12,6 +12,8 @@ interface SystemConfig {
   tier2_threshold: number
   recovery_threshold: number
   critical_soc: number
+  battery_max_soc: number
+  battery_min_soc: number
   notify_services: string[]
 }
 
@@ -25,6 +27,8 @@ const DEFAULT_CONFIG: SystemConfig = {
   tier2_threshold: 30,
   recovery_threshold: 40,
   critical_soc: 10,
+  battery_max_soc: 100,
+  battery_min_soc: 0,
   notify_services: [],
 }
 
@@ -70,6 +74,8 @@ export function SystemSettingsView() {
         tier2_threshold: config.tier2_threshold,
         recovery_threshold: config.recovery_threshold,
         critical_soc: config.critical_soc,
+        battery_max_soc: config.battery_max_soc,
+        battery_min_soc: config.battery_min_soc,
         notify_services: config.notify_services,
       })
       setSaved(true)
@@ -148,6 +154,8 @@ export function SystemSettingsView() {
             critical={config.critical_soc}
             tier2={config.tier2_threshold}
             recovery={config.recovery_threshold}
+            batteryMaxSoc={config.battery_max_soc}
+            batteryMinSoc={config.battery_min_soc}
             currentSoc={soc}
             isOutage={isOutage}
             isActive={isActive}
@@ -157,6 +165,14 @@ export function SystemSettingsView() {
                 critical_soc: critical,
                 tier2_threshold: tier2,
                 recovery_threshold: recovery,
+              }))
+              setSaved(false)
+            }}
+            onLimitsChange={({ maxSoc, minSoc }) => {
+              setLocalConfig((prev) => ({
+                ...prev,
+                battery_max_soc: maxSoc,
+                battery_min_soc: minSoc,
               }))
               setSaved(false)
             }}
@@ -240,18 +256,24 @@ function BatteryStageSlider({
   critical,
   tier2,
   recovery,
+  batteryMaxSoc,
+  batteryMinSoc,
   currentSoc,
   isOutage,
   isActive,
   onChange,
+  onLimitsChange,
 }: {
   critical: number
   tier2: number
   recovery: number
+  batteryMaxSoc: number
+  batteryMinSoc: number
   currentSoc: number | null
   isOutage: boolean
   isActive: boolean
   onChange: (values: { critical: number; tier2: number; recovery: number }) => void
+  onLimitsChange: (values: { maxSoc: number; minSoc: number }) => void
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const activeHandle = useRef<'critical' | 'tier2' | 'recovery' | null>(null)
@@ -381,6 +403,34 @@ function BatteryStageSlider({
               </div>
             </div>
           ))}
+
+          {/* Battery system limit overlays (hatched zones) */}
+          {batteryMaxSoc < 100 && (
+            <div
+              className="absolute top-0 left-0 h-full bg-gray-900/15 pointer-events-none"
+              style={{ width: `${100 - batteryMaxSoc}%` }}
+            >
+              <div
+                className="w-full h-full opacity-30"
+                style={{
+                  backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)',
+                }}
+              />
+            </div>
+          )}
+          {batteryMinSoc > 0 && (
+            <div
+              className="absolute top-0 right-0 h-full bg-gray-900/15 pointer-events-none"
+              style={{ width: `${batteryMinSoc}%` }}
+            >
+              <div
+                className="w-full h-full opacity-30"
+                style={{
+                  backgroundImage: 'repeating-linear-gradient(135deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)',
+                }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Scale labels + SOC indicator below slider */}
@@ -466,6 +516,52 @@ function BatteryStageSlider({
           min={5}
           max={tier2 - 1}
         />
+      </div>
+
+      {/* Battery system limits */}
+      <div className="mt-5 pt-4 border-t border-gray-100">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Battery System Limits</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-gray-500">Max Charge</span>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                value={batteryMaxSoc}
+                min={50}
+                max={100}
+                step={5}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  if (!Number.isNaN(v)) onLimitsChange({ maxSoc: Math.max(50, Math.min(100, v)), minSoc: batteryMinSoc })
+                }}
+                className="w-14 text-right text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <span className="text-xs text-gray-400">%</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-gray-500">Min Discharge</span>
+            <div className="flex items-center gap-1">
+              <input
+                type="number"
+                value={batteryMinSoc}
+                min={0}
+                max={50}
+                step={5}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  if (!Number.isNaN(v)) onLimitsChange({ maxSoc: batteryMaxSoc, minSoc: Math.max(0, Math.min(50, v)) })
+                }}
+                className="w-14 text-right text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <span className="text-xs text-gray-400">%</span>
+            </div>
+          </div>
+        </div>
+        <p className="text-[10px] text-gray-400 mt-2">
+          Hatched areas on the slider mark ranges outside normal battery operation. During an outage, the inverter may discharge beyond the min limit.
+        </p>
       </div>
     </div>
   )

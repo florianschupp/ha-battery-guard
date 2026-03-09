@@ -8,8 +8,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_BATTERY_MAX_SOC,
+    CONF_BATTERY_MIN_SOC,
     CONF_DEVICE_ACTIONS,
     CONF_RESTORE_CONFIG,
+    DEFAULT_BATTERY_MAX_SOC,
+    DEFAULT_BATTERY_MIN_SOC,
     DEFAULT_RESTORE_CONFIG,
     DOMAIN,
     PLATFORMS,
@@ -28,6 +32,7 @@ async def async_migrate_entry(
 
     v1 → v2: Initialize device_actions in options.
     v2 → v3: Initialize restore_config in options.
+    v3 → v4: Initialize battery SOC limits in entry data.
     """
     _LOGGER.info(
         "Migrating Battery Guard config entry from version %s",
@@ -55,6 +60,21 @@ async def async_migrate_entry(
             config_entry, options=new_options, version=3
         )
         _LOGGER.info("Migration to version 3 complete")
+
+    if config_entry.version < 4:
+        new_data = {
+            **config_entry.data,
+            CONF_BATTERY_MAX_SOC: config_entry.data.get(
+                CONF_BATTERY_MAX_SOC, DEFAULT_BATTERY_MAX_SOC
+            ),
+            CONF_BATTERY_MIN_SOC: config_entry.data.get(
+                CONF_BATTERY_MIN_SOC, DEFAULT_BATTERY_MIN_SOC
+            ),
+        }
+        hass.config_entries.async_update_entry(
+            config_entry, data=new_data, version=4
+        )
+        _LOGGER.info("Migration to version 4 complete")
 
     return True
 

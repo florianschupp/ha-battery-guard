@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "2.16.0"
+VERSION = "2.17.0"
 
 # Platforms
 PLATFORMS = [
@@ -69,6 +69,10 @@ DEFAULT_TIER2_THRESHOLD = 30
 DEFAULT_TIER2_RECOVERY_THRESHOLD = 40
 DEFAULT_CRITICAL_SOC = 10
 
+# Battery system SOC limits (informational, not all systems expose these)
+DEFAULT_BATTERY_MAX_SOC = 100
+DEFAULT_BATTERY_MIN_SOC = 0
+
 # Config entry data keys
 CONF_SOC_SENSOR = "soc_sensor"
 CONF_GRID_SENSOR = "grid_sensor"
@@ -80,6 +84,8 @@ CONF_TIER2_THRESHOLD = "tier2_threshold"
 CONF_RECOVERY_THRESHOLD = "recovery_threshold"
 CONF_CRITICAL_SOC = "critical_soc"
 CONF_NOTIFY_SERVICES = "notify_services"
+CONF_BATTERY_MAX_SOC = "battery_max_soc"
+CONF_BATTERY_MIN_SOC = "battery_min_soc"
 CONF_DEVICE_ACTIONS = "device_actions"
 CONF_RESTORE_CONFIG = "restore_config"
 
