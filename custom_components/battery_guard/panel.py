@@ -12,7 +12,7 @@ from homeassistant.components.frontend import (
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import DOMAIN, VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         sidebar_title=PANEL_TITLE,
         sidebar_icon=PANEL_ICON,
         frontend_url_path=DOMAIN,
-        config={"url": f"{STATIC_PATH}/index.html"},
+        config={"url": f"{STATIC_PATH}/index.html?v={VERSION}"},
         require_admin=False,
     )
 
