@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useWizard } from '../../hooks/useWizard'
+import { useStatus } from '../../hooks/useStatus'
 import { getVersion } from '../../services/ha-websocket'
 import type { WizardStep } from '../../types/wizard-types'
 import { WIZARD_STEPS, STEP_LABELS } from '../../types/wizard-types'
@@ -146,6 +147,61 @@ function formatReleaseBody(body: string): string {
     .trim()
 }
 
+/** Live status badge showing SOC and active/outage state */
+function StatusBadge() {
+  const { soc, isActive, isOutage, loading } = useStatus()
+
+  if (loading) {
+    return (
+      <div className="ml-auto flex items-center gap-2">
+        <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  const socColor =
+    soc === null
+      ? 'text-gray-400'
+      : soc > 50
+        ? 'text-green-600'
+        : soc > 20
+          ? 'text-yellow-600'
+          : 'text-red-600'
+
+  const socBg =
+    soc === null
+      ? 'bg-gray-50'
+      : soc > 50
+        ? 'bg-green-50'
+        : soc > 20
+          ? 'bg-yellow-50'
+          : 'bg-red-50'
+
+  return (
+    <div className="ml-auto flex items-center gap-2">
+      {/* SOC badge */}
+      {soc !== null && (
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${socBg} ${socColor}`}>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 10.5h.375c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125H21M4.5 10.5H18a2.25 2.25 0 012.25 2.25v0a2.25 2.25 0 01-2.25 2.25H4.5A2.25 2.25 0 012.25 12.75v0A2.25 2.25 0 014.5 10.5z" />
+          </svg>
+          {Math.round(soc)}%
+        </span>
+      )}
+      {/* Active/Outage badge */}
+      {(isActive || isOutage) && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+          </span>
+          {isOutage ? 'Outage' : 'Active'}
+        </span>
+      )}
+    </div>
+  )
+}
+
 export function WizardShell({ children }: { children: React.ReactNode }) {
   const { currentStep, config, setCurrentStep } = useWizard()
   const currentIndex = WIZARD_STEPS.indexOf(currentStep)
@@ -192,11 +248,13 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
           {!isDeployedNav && (
             <span className="text-sm text-gray-400">Setup Wizard</span>
           )}
+          {/* Status badge — shown when deployed */}
+          {config.deployed && <StatusBadge />}
           {/* Back to overview when in wizard flow but already deployed */}
           {isWizardFlow && config.deployed && (
             <button
               onClick={() => setCurrentStep('dashboard')}
-              className="ml-auto flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />

@@ -82,6 +82,28 @@ async function sendMessage<T>(type: string, data?: Record<string, unknown>): Pro
 }
 
 // ============================================================================
+// State Subscriptions
+// ============================================================================
+
+/** State change event payload from HA */
+export interface StateChangedEvent {
+  entity_id: string
+  new_state: { state: string; attributes: Record<string, unknown> } | null
+  old_state: { state: string; attributes: Record<string, unknown> } | null
+}
+
+/** Subscribe to state_changed events. Returns unsubscribe function. */
+export async function subscribeStateChanges(
+  callback: (event: StateChangedEvent) => void,
+): Promise<() => void> {
+  const conn = getConnection()
+  return conn.subscribeEvents((ev: unknown) => {
+    const event = ev as { data: StateChangedEvent }
+    callback(event.data)
+  }, 'state_changed')
+}
+
+// ============================================================================
 // Label Registry
 // ============================================================================
 

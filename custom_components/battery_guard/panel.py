@@ -49,6 +49,12 @@ async def async_register_panel(hass: HomeAssistant) -> None:
         ]
     )
 
+    # Remove existing panel before re-registering (handles HA restart)
+    try:
+        async_remove_panel(hass, DOMAIN)
+    except KeyError:
+        pass
+
     # Register as iframe panel — the React SPA handles auth via
     # same-origin DOM access (window.parent -> <home-assistant>.hass)
     async_register_built_in_panel(
