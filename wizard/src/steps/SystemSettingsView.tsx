@@ -268,7 +268,8 @@ function BatteryStageSlider({
   const pctFromPointer = (clientX: number) => {
     if (!trackRef.current) return 0
     const rect = trackRef.current.getBoundingClientRect()
-    return Math.round(((clientX - rect.left) / rect.width) * 100)
+    // Inverted: 100% is on the left, 0% on the right
+    return 100 - Math.round(((clientX - rect.left) / rect.width) * 100)
   }
 
   const handlePointerDown = (handle: 'critical' | 'tier2' | 'recovery') =>
@@ -293,11 +294,12 @@ function BatteryStageSlider({
     clampAndUpdate(handle, v)
   }
 
+  // Zones ordered left-to-right: 100% (full) → 0% (empty)
   const zones = [
-    { from: 0, to: critical, color: 'bg-red-400' },
-    { from: critical, to: tier2, color: 'bg-orange-400' },
-    { from: tier2, to: recovery, color: 'bg-yellow-300' },
-    { from: recovery, to: 100, color: 'bg-blue-400' },
+    { width: 100 - recovery, color: 'bg-blue-400' },
+    { width: recovery - tier2, color: 'bg-yellow-300' },
+    { width: tier2 - critical, color: 'bg-orange-400' },
+    { width: critical, color: 'bg-red-400' },
   ]
 
   const handles: { key: 'critical' | 'tier2' | 'recovery'; pct: number; color: string }[] = [
@@ -311,8 +313,8 @@ function BatteryStageSlider({
       {/* Slider track */}
       <div className="px-3">
         <div className="flex justify-between text-[10px] text-gray-400 mb-1.5">
-          <span>0%</span>
           <span>100%</span>
+          <span>0%</span>
         </div>
         <div
           ref={trackRef}
@@ -326,7 +328,7 @@ function BatteryStageSlider({
               <div
                 key={i}
                 className={`${z.color} h-full transition-all duration-75`}
-                style={{ width: `${z.to - z.from}%` }}
+                style={{ width: `${z.width}%` }}
               />
             ))}
           </div>
@@ -336,7 +338,7 @@ function BatteryStageSlider({
             <div
               key={key}
               className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-5 h-5 rounded-full ${color} ring-2 shadow-md cursor-grab active:cursor-grabbing touch-none`}
-              style={{ left: `${pct}%` }}
+              style={{ left: `${100 - pct}%` }}
               onPointerDown={handlePointerDown(key)}
             >
               <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] font-medium text-gray-600 whitespace-nowrap">
@@ -347,34 +349,18 @@ function BatteryStageSlider({
         </div>
       </div>
 
-      {/* Legend */}
+      {/* Legend — ordered left-to-right matching the slider */}
       <div className="mt-6 space-y-3">
         <ZoneLegendRow
-          color="bg-red-400"
-          label="Critical"
-          range={`0 – ${critical}%`}
-          description="Emergency — only Tier 3 (critical) devices remain active"
-          inputValue={critical}
-          onInput={(v) => handleNumberInput('critical', v)}
-          step={1}
-          min={5}
-          max={tier2 - 1}
-        />
-        <ZoneLegendRow
-          color="bg-orange-400"
-          label="Tier 2"
-          range={`${critical} – ${tier2}%`}
-          description="Mid-priority device actions execute"
-          inputValue={tier2}
-          onInput={(v) => handleNumberInput('tier2', v)}
-          step={5}
-          min={critical + 5}
-          max={recovery - 5}
+          color="bg-blue-400"
+          label="Tier 1"
+          range={`100 – ${recovery}%`}
+          description="Low-priority device actions execute on outage detection"
         />
         <ZoneLegendRow
           color="bg-yellow-300"
           label="Recovery Buffer"
-          range={`${tier2} – ${recovery}%`}
+          range={`${recovery} – ${tier2}%`}
           description="Hysteresis zone — prevents flicker between Tier 1 and Tier 2"
           inputValue={recovery}
           inputLabel="Recovery at"
@@ -384,10 +370,26 @@ function BatteryStageSlider({
           max={95}
         />
         <ZoneLegendRow
-          color="bg-blue-400"
-          label="Tier 1"
-          range={`${recovery} – 100%`}
-          description="Low-priority device actions execute on outage detection"
+          color="bg-orange-400"
+          label="Tier 2"
+          range={`${tier2} – ${critical}%`}
+          description="Mid-priority device actions execute"
+          inputValue={tier2}
+          onInput={(v) => handleNumberInput('tier2', v)}
+          step={5}
+          min={critical + 5}
+          max={recovery - 5}
+        />
+        <ZoneLegendRow
+          color="bg-red-400"
+          label="Critical"
+          range={`${critical} – 0%`}
+          description="Emergency — only Tier 3 (critical) devices remain active"
+          inputValue={critical}
+          onInput={(v) => handleNumberInput('critical', v)}
+          step={1}
+          min={5}
+          max={tier2 - 1}
         />
       </div>
     </div>
