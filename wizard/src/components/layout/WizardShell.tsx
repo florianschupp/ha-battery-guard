@@ -1,13 +1,161 @@
+import { useEffect, useRef, useState } from 'react'
 import { useWizard } from '../../hooks/useWizard'
+import { getVersion } from '../../services/ha-websocket'
 import { WIZARD_STEPS, STEP_LABELS } from '../../types/wizard-types'
+
+interface ReleaseNote {
+  tag_name: string
+  name: string
+  body: string
+  published_at: string
+}
+
+/** Modal showing release notes fetched from GitHub */
+function ReleaseNotesModal({
+  version,
+  onClose,
+}: {
+  version: string
+  onClose: () => void
+}) {
+  const [notes, setNotes] = useState<ReleaseNote[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchNotes = async () => {
+      try {
+        const res = await fetch(
+          'https://api.github.com/repos/florianschupp/ha-battery-guard/releases?per_page=10',
+        )
+        if (!res.ok) throw new Error(`GitHub API: ${res.status}`)
+        const data: ReleaseNote[] = await res.json()
+        setNotes(data)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load release notes')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchNotes()
+  }, [version])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Release Notes</h2>
+            <p className="text-sm text-gray-500">Battery Guard v{version}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Modal body */}
+        <div className="overflow-y-auto px-6 py-4 flex-1">
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {error && (
+            <div className="text-center py-8">
+              <p className="text-sm text-gray-500">{error}</p>
+            </div>
+          )}
+
+          {!loading && !error && notes.length === 0 && (
+            <p className="text-sm text-gray-500 text-center py-8">No releases found.</p>
+          )}
+
+          {!loading &&
+            !error &&
+            notes.map((release, idx) => {
+              const isCurrent = release.tag_name === `v${version}`
+              return (
+                <div
+                  key={release.tag_name}
+                  className={`${idx > 0 ? 'mt-6 pt-6 border-t border-gray-100' : ''}`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-semibold text-gray-900">{release.tag_name}</span>
+                    {isCurrent && (
+                      <span className="text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                        current
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400 ml-auto">
+                      {new Date(release.published_at).toLocaleDateString('de-DE', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                      })}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-600 whitespace-pre-line leading-relaxed">
+                    {formatReleaseBody(release.body)}
+                  </div>
+                </div>
+              )
+            })}
+        </div>
+
+        {/* Modal footer */}
+        <div className="px-6 py-3 border-t border-gray-100 flex justify-end">
+          <a
+            href="https://github.com/florianschupp/ha-battery-guard/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+          >
+            All releases on GitHub &rarr;
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Simple markdown-lite formatter for release note bodies */
+function formatReleaseBody(body: string): string {
+  if (!body) return 'No release notes.'
+  // Strip markdown links, keep text
+  return body
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/#{1,3}\s*/g, '')
+    .trim()
+}
 
 export function WizardShell({ children }: { children: React.ReactNode }) {
   const { currentStep, config, setCurrentStep } = useWizard()
   const currentIndex = WIZARD_STEPS.indexOf(currentStep)
   const isDashboard = currentStep === 'dashboard'
 
+  const [version, setVersion] = useState<string | null>(null)
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false)
+  const versionLoaded = useRef(false)
+
+  useEffect(() => {
+    if (versionLoaded.current) return
+    versionLoaded.current = true
+    let cancelled = false
+    getVersion()
+      .then((v) => { if (!cancelled) setVersion(v) })
+      .catch(() => { /* Version endpoint not available (pre-v2.7 backend) */ })
+    return () => { cancelled = true }
+  }, [])
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm px-6 py-4">
         <div className="max-w-5xl mx-auto flex items-center gap-3">
@@ -111,7 +259,30 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Content */}
-      <main className="max-w-5xl mx-auto px-6 py-8">{children}</main>
+      <main className="max-w-5xl mx-auto px-6 py-8 flex-1 w-full">{children}</main>
+
+      {/* Footer */}
+      <footer className="px-6 py-4">
+        <div className="max-w-5xl mx-auto flex items-center justify-center">
+          {version && (
+            <button
+              onClick={() => setShowReleaseNotes(true)}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              title="Show release notes"
+            >
+              Battery Guard v{version}
+            </button>
+          )}
+        </div>
+      </footer>
+
+      {/* Release Notes Modal */}
+      {showReleaseNotes && version && (
+        <ReleaseNotesModal
+          version={version}
+          onClose={() => setShowReleaseNotes(false)}
+        />
+      )}
     </div>
   )
 }

@@ -171,6 +171,14 @@ export async function listServices(): Promise<Record<string, Record<string, unkn
 // Battery Guard Custom API
 // ============================================================================
 
+/** Get the current Battery Guard version from the integration */
+export async function getVersion(): Promise<string> {
+  const result = await sendMessage<{ version: string }>(
+    'battery_guard/get_version',
+  )
+  return result.version
+}
+
 /** Get per-device action configurations from the integration */
 export async function getDeviceActions(): Promise<Record<string, unknown>> {
   const result = await sendMessage<{ device_actions: Record<string, unknown> }>(
