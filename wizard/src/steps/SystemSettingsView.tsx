@@ -34,7 +34,7 @@ export function SystemSettingsView() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const { soc } = useStatus()
+  const { soc, isOutage, isActive } = useStatus()
   const loaded = useRef(false)
 
   useEffect(() => {
@@ -149,6 +149,8 @@ export function SystemSettingsView() {
             tier2={config.tier2_threshold}
             recovery={config.recovery_threshold}
             currentSoc={soc}
+            isOutage={isOutage}
+            isActive={isActive}
             onChange={({ critical, tier2, recovery }) => {
               setLocalConfig((prev) => ({
                 ...prev,
@@ -239,12 +241,16 @@ function BatteryStageSlider({
   tier2,
   recovery,
   currentSoc,
+  isOutage,
+  isActive,
   onChange,
 }: {
   critical: number
   tier2: number
   recovery: number
   currentSoc: number | null
+  isOutage: boolean
+  isActive: boolean
   onChange: (values: { critical: number; tier2: number; recovery: number }) => void
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -315,6 +321,34 @@ function BatteryStageSlider({
 
   return (
     <div className="select-none">
+      {/* Grid status */}
+      {isOutage || isActive ? (
+        <div className="flex items-center gap-2 px-3 py-2 mb-4 rounded-lg bg-red-50 border border-red-200">
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+          </span>
+          <div>
+            <p className="text-sm font-medium text-red-700">
+              {isActive ? 'Power Outage — System Active' : 'Power Outage Detected'}
+            </p>
+            <p className="text-xs text-red-500">
+              {isActive
+                ? 'Battery Guard is managing devices based on battery level.'
+                : 'Activating — debounce in progress...'}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 px-3 py-2 mb-4 rounded-lg bg-gray-50 border border-gray-200">
+          <span className="inline-flex rounded-full h-2.5 w-2.5 bg-green-400 shrink-0" />
+          <p className="text-xs text-gray-500">
+            <span className="font-medium text-gray-600">Grid Normal</span>
+            {' — '}System inactive. Actions only trigger during a power outage.
+          </p>
+        </div>
+      )}
+
       {/* Slider track */}
       <div className="px-3">
         <div
