@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStatus } from '../hooks/useStatus'
-import { getConfig, setConfig } from '../services/ha-websocket'
+import { getConfig, getDeviceActions, listEntities, setConfig } from '../services/ha-websocket'
+import type { DeviceActions } from '../types/wizard-types'
 
 interface SystemConfig {
   soc_sensor: string
@@ -15,6 +16,76 @@ interface SystemConfig {
   battery_max_soc: number
   battery_min_soc: number
   notify_services: string[]
+}
+
+/** Human-readable labels for device actions */
+const ACTION_LABELS: Record<string, string> = {
+  turn_off: 'off',
+  turn_on: 'on',
+  set_hvac_mode: 'mode switch',
+  set_temperature: 'temp adjust',
+  dim: 'dimmed',
+}
+
+interface TierStat {
+  total: number
+  actions: Record<string, number>
+}
+
+interface TierStats {
+  tier1: TierStat
+  tier2: TierStat
+  tier3: TierStat
+}
+
+const EMPTY_TIER_STATS: TierStats = {
+  tier1: { total: 0, actions: {} },
+  tier2: { total: 0, actions: {} },
+  tier3: { total: 0, actions: {} },
+}
+
+/** Compute per-tier device counts and action breakdowns */
+function computeTierStats(
+  entities: { entity_id: string; labels: string[] }[],
+  deviceActions: DeviceActions,
+): TierStats {
+  const stats: TierStats = {
+    tier1: { total: 0, actions: {} },
+    tier2: { total: 0, actions: {} },
+    tier3: { total: 0, actions: {} },
+  }
+
+  for (const entity of entities) {
+    if (entity.labels.includes('battery_guard_tier1')) {
+      stats.tier1.total++
+      const action = deviceActions[entity.entity_id]?.tier1?.action ?? 'turn_off'
+      const label = ACTION_LABELS[action] ?? action
+      stats.tier1.actions[label] = (stats.tier1.actions[label] ?? 0) + 1
+    }
+    if (entity.labels.includes('battery_guard_tier2')) {
+      stats.tier2.total++
+      const action = deviceActions[entity.entity_id]?.tier2?.action ?? 'turn_off'
+      const label = ACTION_LABELS[action] ?? action
+      stats.tier2.actions[label] = (stats.tier2.actions[label] ?? 0) + 1
+    }
+    if (entity.labels.includes('battery_guard_tier3')) {
+      stats.tier3.total++
+    }
+  }
+
+  return stats
+}
+
+/** Format tier stat into a compact summary string */
+function formatTierSummary(stat: TierStat, isCritical = false): string {
+  if (stat.total === 0) return 'No devices assigned'
+  if (isCritical) {
+    return `${stat.total} device${stat.total !== 1 ? 's' : ''} (always active)`
+  }
+  const parts = Object.entries(stat.actions)
+    .sort(([, a], [, b]) => b - a)
+    .map(([label, count]) => `${count}× ${label}`)
+  return `${stat.total} device${stat.total !== 1 ? 's' : ''} — ${parts.join(', ')}`
 }
 
 const DEFAULT_CONFIG: SystemConfig = {
@@ -34,6 +105,7 @@ const DEFAULT_CONFIG: SystemConfig = {
 
 export function SystemSettingsView() {
   const [config, setLocalConfig] = useState<SystemConfig>(DEFAULT_CONFIG)
+  const [tierStats, setTierStats] = useState<TierStats>(EMPTY_TIER_STATS)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -45,12 +117,20 @@ export function SystemSettingsView() {
     if (loaded.current) return
     loaded.current = true
     let cancelled = false
-    getConfig()
-      .then((data) => {
-        if (!cancelled) setLocalConfig(data as unknown as SystemConfig)
-      })
-      .catch(() => { /* pre-v2.9 backend */ })
-      .finally(() => { if (!cancelled) setLoading(false) })
+
+    // Fetch config, entities, and device actions in parallel
+    Promise.all([
+      getConfig().catch(() => null),
+      listEntities().catch(() => []),
+      getDeviceActions().catch(() => ({})),
+    ]).then(([configData, entities, deviceActions]) => {
+      if (cancelled) return
+      if (configData) setLocalConfig(configData as unknown as SystemConfig)
+      const typedEntities = entities as { entity_id: string; labels: string[] }[]
+      const typedActions = deviceActions as DeviceActions
+      setTierStats(computeTierStats(typedEntities, typedActions))
+    }).finally(() => { if (!cancelled) setLoading(false) })
+
     return () => { cancelled = true }
   }, [])
 
@@ -159,6 +239,7 @@ export function SystemSettingsView() {
             currentSoc={soc}
             isOutage={isOutage}
             isActive={isActive}
+            tierStats={tierStats}
             onChange={({ critical, tier2, recovery }) => {
               setLocalConfig((prev) => ({
                 ...prev,
@@ -261,6 +342,7 @@ function BatteryStageSlider({
   currentSoc,
   isOutage,
   isActive,
+  tierStats,
   onChange,
   onLimitsChange,
 }: {
@@ -272,6 +354,7 @@ function BatteryStageSlider({
   currentSoc: number | null
   isOutage: boolean
   isActive: boolean
+  tierStats: TierStats
   onChange: (values: { critical: number; tier2: number; recovery: number }) => void
   onLimitsChange: (values: { maxSoc: number; minSoc: number }) => void
 }) {
@@ -481,7 +564,8 @@ function BatteryStageSlider({
           color="bg-blue-200"
           label="Tier 1"
           range={`100 – ${recovery}%`}
-          description="Immediate on outage — low-priority devices managed (off, dimmed, or mode-switched)"
+          description="Immediate on outage — low-priority devices managed"
+          deviceSummary={formatTierSummary(tierStats.tier1)}
         />
         <ZoneLegendRow
           color="bg-amber-200"
@@ -500,6 +584,7 @@ function BatteryStageSlider({
           label="Tier 2"
           range={`${tier2} – ${critical}%`}
           description="SOC below threshold — mid-priority device actions execute"
+          deviceSummary={formatTierSummary(tierStats.tier2)}
           inputValue={tier2}
           onInput={(v) => handleNumberInput('tier2', v)}
           step={5}
@@ -511,6 +596,7 @@ function BatteryStageSlider({
           label="Critical"
           range={`${critical} – 0%`}
           description="Emergency — only Tier 3 (essential) devices remain active"
+          deviceSummary={formatTierSummary(tierStats.tier3, true)}
           inputValue={critical}
           onInput={(v) => handleNumberInput('critical', v)}
           step={1}
@@ -574,6 +660,7 @@ function ZoneLegendRow({
   label,
   range,
   description,
+  deviceSummary,
   inputValue,
   inputLabel,
   onInput,
@@ -585,6 +672,7 @@ function ZoneLegendRow({
   label: string
   range: string
   description: string
+  deviceSummary?: string
   inputValue?: number
   inputLabel?: string
   onInput?: (value: string) => void
@@ -618,6 +706,14 @@ function ZoneLegendRow({
           )}
         </div>
         <p className="text-xs text-gray-400 mt-0.5">{description}</p>
+        {deviceSummary && (
+          <p className="text-[11px] text-gray-500 mt-1 flex items-center gap-1">
+            <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728M9.172 15.828a5 5 0 010-7.656m5.656 0a5 5 0 010 7.656M12 12h.008v.008H12V12z" />
+            </svg>
+            {deviceSummary}
+          </p>
+        )}
       </div>
     </div>
   )
