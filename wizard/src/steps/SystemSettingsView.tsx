@@ -146,8 +146,8 @@ export function SystemSettingsView() {
         </div>
         <div className="px-5 py-4">
           <p className="text-xs text-gray-500 mb-5">
-            During a power outage, Battery Guard executes device actions in stages based on battery level.
-            If the battery is already below a threshold when the outage starts, all applicable stages trigger immediately.
+            During a power outage, Tier 1 actions execute immediately. As the battery drains, further
+            stages activate. Actions can include turning off, dimming, or switching device modes.
           </p>
 
           <BatteryStageSlider
@@ -328,9 +328,10 @@ function BatteryStageSlider({
   }
 
   // Zones ordered left-to-right: 100% (full) → 0% (empty)
+  // Colors show escalating intervention severity, not device health
   const zones = [
-    { width: 100 - recovery, color: 'bg-blue-400' },
-    { width: recovery - tier2, color: 'bg-yellow-300' },
+    { width: 100 - recovery, color: 'bg-blue-200' },
+    { width: recovery - tier2, color: 'bg-amber-200' },
     { width: tier2 - critical, color: 'bg-orange-400' },
     { width: critical, color: 'bg-red-400' },
   ]
@@ -450,9 +451,9 @@ function BatteryStageSlider({
           {/* Current SOC indicator — colored by active tier */}
           {currentSoc !== null && (() => {
             const tierColor = currentSoc >= recovery
-              ? 'text-blue-500'
+              ? 'text-blue-400'
               : currentSoc >= tier2
-                ? 'text-yellow-500'
+                ? 'text-amber-500'
                 : currentSoc >= critical
                   ? 'text-orange-500'
                   : 'text-red-500'
@@ -477,16 +478,16 @@ function BatteryStageSlider({
       {/* Legend — ordered left-to-right matching the slider */}
       <div className="mt-6 space-y-3">
         <ZoneLegendRow
-          color="bg-blue-400"
+          color="bg-blue-200"
           label="Tier 1"
           range={`100 – ${recovery}%`}
-          description="Low-priority device actions execute on outage detection"
+          description="Immediate on outage — low-priority devices managed (off, dimmed, or mode-switched)"
         />
         <ZoneLegendRow
-          color="bg-yellow-300"
+          color="bg-amber-200"
           label="Recovery Buffer"
           range={`${recovery} – ${tier2}%`}
-          description="Hysteresis zone — prevents flicker between Tier 1 and Tier 2"
+          description="Hysteresis zone — Tier 2 devices only restore above this level"
           inputValue={recovery}
           inputLabel="Recovery at"
           onInput={(v) => handleNumberInput('recovery', v)}
@@ -498,7 +499,7 @@ function BatteryStageSlider({
           color="bg-orange-400"
           label="Tier 2"
           range={`${tier2} – ${critical}%`}
-          description="Mid-priority device actions execute"
+          description="SOC below threshold — mid-priority device actions execute"
           inputValue={tier2}
           onInput={(v) => handleNumberInput('tier2', v)}
           step={5}
@@ -509,7 +510,7 @@ function BatteryStageSlider({
           color="bg-red-400"
           label="Critical"
           range={`${critical} – 0%`}
-          description="Emergency — only Tier 3 (critical) devices remain active"
+          description="Emergency — only Tier 3 (essential) devices remain active"
           inputValue={critical}
           onInput={(v) => handleNumberInput('critical', v)}
           step={1}
