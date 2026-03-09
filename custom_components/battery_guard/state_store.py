@@ -13,9 +13,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.const import STATE_OFF, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -134,6 +137,20 @@ class StateStore:
         return bool(self._states)
 
 
+def is_simulation_mode(hass: HomeAssistant) -> bool:
+    """Check if simulation mode is active via the simulation switch."""
+    registry = er.async_get(hass)
+    for entity in registry.entities.values():
+        if (
+            entity.platform == DOMAIN
+            and entity.unique_id
+            and entity.unique_id.endswith("_simulation")
+        ):
+            state = hass.states.get(entity.entity_id)
+            return state is not None and state.state == STATE_ON
+    return False
+
+
 async def execute_action(
     hass: HomeAssistant, entity_id: str, action_config: dict[str, Any]
 ) -> None:
@@ -147,6 +164,10 @@ async def execute_action(
     """
     action = action_config.get("action", "turn_off")
     domain = entity_id.split(".")[0]
+
+    if is_simulation_mode(hass):
+        _LOGGER.info("[SIM] Would execute '%s' on %s", action, entity_id)
+        return
 
     if action == "turn_off":
         await hass.services.async_call(
@@ -217,6 +238,10 @@ async def restore_state(
     domain = entity_id.split(".")[0]
     saved_state = saved.get("state", "on")
     attrs = saved.get("attributes", {})
+
+    if is_simulation_mode(hass):
+        _LOGGER.info("[SIM] Would restore %s to state '%s'", entity_id, saved_state)
+        return
 
     # If device was off before the outage, turn it off
     if saved_state == STATE_OFF:

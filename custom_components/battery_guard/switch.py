@@ -41,6 +41,13 @@ async def async_setup_entry(
                 icon="mdi:power-plug-off",
                 default=False,
             ),
+            BatteryGuardSwitch(
+                entry,
+                key="simulation",
+                name="Simulation Mode",
+                icon="mdi:test-tube",
+                default=False,
+            ),
         ]
     )
 

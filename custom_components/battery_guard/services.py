@@ -32,7 +32,7 @@ from .const import (
     TIER_KEY_TO_LABEL,
 )
 from .labels import resolve_label_id
-from .state_store import StateStore, execute_action, restore_state
+from .state_store import StateStore, execute_action, is_simulation_mode, restore_state
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -358,6 +358,10 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Send notification through configured channels."""
         title = call.data["title"]
         message = call.data["message"]
+
+        # Prefix notifications in simulation mode
+        if is_simulation_mode(hass):
+            title = f"\U0001f9ea [SIM] {title}"
         critical = call.data.get("critical", False)
 
         # Find the config entry to get notify services
