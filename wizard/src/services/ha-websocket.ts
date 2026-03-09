@@ -179,6 +179,21 @@ export async function getVersion(): Promise<string> {
   return result.version
 }
 
+/** Get Battery Guard system configuration (thresholds, sensors, notifications) */
+export async function getConfig(): Promise<Record<string, unknown>> {
+  const result = await sendMessage<{ config: Record<string, unknown> }>(
+    'battery_guard/get_config',
+  )
+  return result.config
+}
+
+/** Update Battery Guard system configuration (thresholds, notifications) */
+export async function setConfig(
+  config: Record<string, unknown>,
+): Promise<void> {
+  await sendMessage('battery_guard/set_config', { config })
+}
+
 /** Get per-device action configurations from the integration */
 export async function getDeviceActions(): Promise<Record<string, unknown>> {
   const result = await sendMessage<{ device_actions: Record<string, unknown> }>(

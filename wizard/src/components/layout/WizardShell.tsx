@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useWizard } from '../../hooks/useWizard'
 import { getVersion } from '../../services/ha-websocket'
+import type { WizardStep } from '../../types/wizard-types'
 import { WIZARD_STEPS, STEP_LABELS } from '../../types/wizard-types'
 
 interface ReleaseNote {
@@ -9,6 +10,16 @@ interface ReleaseNote {
   body: string
   published_at: string
 }
+
+/** Navigation tabs shown when deployed */
+const NAV_TABS: { step: WizardStep; label: string }[] = [
+  { step: 'dashboard', label: 'Appliances' },
+  { step: 'settings', label: 'System' },
+  { step: 'restore', label: 'Restore' },
+]
+
+/** Steps that are part of the deployed navigation (not wizard flow) */
+const DEPLOYED_STEPS: WizardStep[] = ['dashboard', 'settings', 'restore']
 
 /** Modal showing release notes fetched from GitHub */
 function ReleaseNotesModal({
@@ -138,7 +149,8 @@ function formatReleaseBody(body: string): string {
 export function WizardShell({ children }: { children: React.ReactNode }) {
   const { currentStep, config, setCurrentStep } = useWizard()
   const currentIndex = WIZARD_STEPS.indexOf(currentStep)
-  const isDashboard = currentStep === 'dashboard'
+  const isDeployedNav = config.deployed && DEPLOYED_STEPS.includes(currentStep)
+  const isWizardFlow = !config.deployed || !DEPLOYED_STEPS.includes(currentStep)
 
   const [version, setVersion] = useState<string | null>(null)
   const [showReleaseNotes, setShowReleaseNotes] = useState(false)
@@ -177,10 +189,11 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
           <h1 className="text-xl font-semibold text-gray-900">
             Battery Guard
           </h1>
-          <span className="text-sm text-gray-400">
-            {isDashboard ? 'Configuration' : 'Setup Wizard'}
-          </span>
-          {!isDashboard && config.deployed && (
+          {!isDeployedNav && (
+            <span className="text-sm text-gray-400">Setup Wizard</span>
+          )}
+          {/* Back to overview when in wizard flow but already deployed */}
+          {isWizardFlow && config.deployed && (
             <button
               onClick={() => setCurrentStep('dashboard')}
               className="ml-auto flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 transition-colors"
@@ -194,8 +207,32 @@ export function WizardShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Stepper — hidden on dashboard */}
-      {!isDashboard && (
+      {/* Tab navigation — shown when deployed */}
+      {isDeployedNav && (
+        <nav className="bg-white border-b border-gray-200 px-6">
+          <div className="max-w-5xl mx-auto flex gap-0">
+            {NAV_TABS.map((tab) => {
+              const isActive = currentStep === tab.step
+              return (
+                <button
+                  key={tab.step}
+                  onClick={() => setCurrentStep(tab.step)}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+      )}
+
+      {/* Stepper — shown during wizard flow only */}
+      {isWizardFlow && !config.deployed && (
         <nav className="bg-white border-b border-gray-100 px-6 py-3">
           <div className="max-w-5xl mx-auto">
             <ol className="flex items-center justify-between sm:justify-start sm:gap-2">

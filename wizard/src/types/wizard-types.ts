@@ -7,6 +7,7 @@ export type WizardStep =
   | 'restore'
   | 'summary'
   | 'dashboard'
+  | 'settings'
 
 export const WIZARD_STEPS: WizardStep[] = [
   'connection',
@@ -23,6 +24,7 @@ export const STEP_LABELS: Record<WizardStep, string> = {
   restore: 'Restore',
   summary: 'Deploy',
   dashboard: 'Overview',
+  settings: 'System',
 }
 
 /** Entity with its current tier assignment for the wizard */
