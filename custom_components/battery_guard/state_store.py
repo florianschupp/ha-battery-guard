@@ -4,8 +4,8 @@ Before any tier action modifies a device, its current state is saved here.
 On restore (grid power returns), devices are returned to their exact previous
 state using domain-specific service calls.
 
-Storage is in-memory (hass.data). If HA restarts during an outage, saved
-states are lost and restore falls back to generic turn_on.
+States are persisted to disk via hass.helpers.storage.Store so they survive
+HA restarts during an outage.
 """
 
 from __future__ import annotations
@@ -15,8 +15,12 @@ from typing import Any
 
 from homeassistant.const import STATE_OFF, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 
 _LOGGER = logging.getLogger(__name__)
+
+STORAGE_KEY = "battery_guard.state_store"
+STORAGE_VERSION = 1
 
 # Which attributes to snapshot per domain
 _DOMAIN_ATTRIBUTES: dict[str, list[str]] = {
@@ -45,12 +49,32 @@ _DOMAIN_ATTRIBUTES: dict[str, list[str]] = {
 
 
 class StateStore:
-    """In-memory store for pre-action device states."""
+    """Persistent store for pre-action device states.
+
+    Uses hass.helpers.storage.Store to persist states to disk so they
+    survive HA restarts during an outage.
+    """
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the state store."""
         self.hass = hass
         self._states: dict[str, dict[str, Any]] = {}
+        self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+
+    async def async_load(self) -> None:
+        """Load saved states from disk on startup."""
+        data = await self._store.async_load()
+        if data and isinstance(data, dict) and "states" in data:
+            self._states = data["states"]
+            _LOGGER.info(
+                "Restored %d saved device states from disk", len(self._states)
+            )
+
+    def _schedule_save(self) -> None:
+        """Schedule an async persist to disk."""
+        self.hass.async_create_task(
+            self._store.async_save({"states": self._states})
+        )
 
     def save_state(self, entity_id: str) -> None:
         """Capture the current state of a device.
@@ -84,6 +108,7 @@ class StateStore:
                 saved["attributes"][attr] = value
 
         self._states[entity_id] = saved
+        self._schedule_save()
         _LOGGER.debug("Saved state for %s: %s", entity_id, saved["state"])
 
     def get_saved_state(self, entity_id: str) -> dict[str, Any] | None:
@@ -91,14 +116,16 @@ class StateStore:
         return self._states.get(entity_id)
 
     def clear_state(self, entity_id: str) -> None:
-        """Clear the saved state for a single device."""
-        self._states.pop(entity_id, None)
+        """Clear the saved state for a single device and persist."""
+        if self._states.pop(entity_id, None) is not None:
+            self._schedule_save()
 
     def clear_all(self) -> None:
-        """Clear all saved states (after full restore)."""
+        """Clear all saved states (after full restore) and persist."""
         count = len(self._states)
         self._states.clear()
         if count:
+            self._schedule_save()
             _LOGGER.info("Cleared %d saved device states", count)
 
     @property

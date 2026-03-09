@@ -82,6 +82,7 @@ async def async_setup_entry(
 
     # Initialize state store for saving/restoring device states
     state_store = StateStore(hass)
+    await state_store.async_load()
     hass.data[DOMAIN]["state_store"] = state_store
 
     # Set up coordinator for unassigned device counting

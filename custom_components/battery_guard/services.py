@@ -27,6 +27,8 @@ from .const import (
     LABEL_TIER1,
     LABEL_TIER2,
     LABEL_TIER3,
+    MAX_RETRIES,
+    RETRY_BASE_DELAY,
     TIER_KEY_TO_LABEL,
 )
 from .labels import resolve_label_id
@@ -82,6 +84,41 @@ def _get_action_config(
     return {"action": "turn_off"}
 
 
+async def _retry_action(
+    coro_factory: Any,
+    entity_id: str,
+    action_name: str,
+) -> bool:
+    """Execute action with retry and exponential backoff.
+
+    Returns True on success, False if all attempts failed.
+    """
+    for attempt in range(MAX_RETRIES):
+        try:
+            await coro_factory()
+            return True
+        except Exception:
+            if attempt < MAX_RETRIES - 1:
+                delay = RETRY_BASE_DELAY * (2**attempt)
+                _LOGGER.warning(
+                    "Attempt %d/%d failed for %s (%s), retrying in %ds",
+                    attempt + 1,
+                    MAX_RETRIES,
+                    entity_id,
+                    action_name,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+            else:
+                _LOGGER.error(
+                    "All %d attempts failed for %s (%s)",
+                    MAX_RETRIES,
+                    entity_id,
+                    action_name,
+                )
+    return False
+
+
 async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Register Battery Guard services."""
 
@@ -91,7 +128,8 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         For each entity:
         1. Save current state (first-save-wins via StateStore)
         2. Look up per-device action from config entry options
-        3. Execute the configured action (set_hvac_mode, dim, turn_off, etc.)
+        3. Execute the configured action with retry
+        4. Track failures for notification reporting
         """
         tier = call.data["tier"]
         if tier not in VALID_TIERS:
@@ -114,6 +152,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         tier_key = _TIER_ACTION_KEY.get(tier, "tier1")
         device_actions = _get_device_actions(entry)
         state_store = _get_state_store(hass)
+        failed_entities: list[str] = []
 
         _LOGGER.info(
             "Executing tier %s actions for %d entities", tier, len(entity_ids)
@@ -126,23 +165,34 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
             # 2. Get the configured action for this entity + tier
             action_config = _get_action_config(device_actions, entity_id, tier_key)
+            action_name = action_config.get("action", "turn_off")
 
-            # 3. Execute the action
-            try:
-                await execute_action(hass, entity_id, action_config)
-                _LOGGER.debug(
-                    "Executed %s on %s", action_config.get("action"), entity_id
-                )
-            except Exception:
-                _LOGGER.exception(
-                    "Failed to execute action on %s: %s", entity_id, action_config
-                )
+            # 3. Execute with retry
+            success = await _retry_action(
+                lambda eid=entity_id, ac=action_config: execute_action(
+                    hass, eid, ac
+                ),
+                entity_id,
+                action_name,
+            )
+            if success:
+                _LOGGER.debug("Executed %s on %s", action_name, entity_id)
+            else:
+                failed_entities.append(entity_id)
+
+        # Store result for notification reporting
+        hass.data.setdefault(DOMAIN, {})["last_action_result"] = {
+            "tier": tier,
+            "action": "tier_off",
+            "total": len(entity_ids),
+            "failed": failed_entities,
+        }
 
     async def handle_tier_on(call: ServiceCall) -> None:
         """Restore devices in a tier to their saved state.
 
         Respects restore_config: skips stay_off entities and applies
-        device_delay between individual restores.
+        device_delay between individual restores. Uses retry on failure.
         """
         tier = call.data["tier"]
         if tier not in VALID_TIERS:
@@ -182,6 +232,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         device_delays: dict[str, int] = restore_config.get("device_delays", {})
 
         state_store = _get_state_store(hass)
+        failed_entities: list[str] = []
 
         _LOGGER.info(
             "Restoring %d entities in %s (default_device_delay=%ds)",
@@ -191,30 +242,40 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         )
 
         for i, entity_id in enumerate(entity_ids):
-            try:
-                saved = (
-                    state_store.get_saved_state(entity_id) if state_store else None
-                )
+            saved = (
+                state_store.get_saved_state(entity_id) if state_store else None
+            )
 
-                if saved:
-                    await restore_state(hass, entity_id, saved)
-                    if state_store:
-                        state_store.clear_state(entity_id)
+            if saved:
+                success = await _retry_action(
+                    lambda eid=entity_id, s=saved: restore_state(hass, eid, s),
+                    entity_id,
+                    "restore",
+                )
+                if success and state_store:
+                    state_store.clear_state(entity_id)
                     _LOGGER.debug("Restored %s from saved state", entity_id)
-                else:
-                    # No saved state — generic turn_on (best effort)
-                    await hass.services.async_call(
+                elif not success:
+                    failed_entities.append(entity_id)
+            else:
+                # No saved state — generic turn_on (best effort)
+                success = await _retry_action(
+                    lambda eid=entity_id: hass.services.async_call(
                         "homeassistant",
                         "turn_on",
                         {},
-                        target={"entity_id": entity_id},
+                        target={"entity_id": eid},
                         blocking=True,
-                    )
+                    ),
+                    entity_id,
+                    "turn_on",
+                )
+                if success:
                     _LOGGER.debug(
                         "No saved state for %s — generic turn_on", entity_id
                     )
-            except Exception:
-                _LOGGER.exception("Failed to restore %s", entity_id)
+                else:
+                    failed_entities.append(entity_id)
 
             # Delay between devices (not after the last one)
             # Use per-device override if configured, else fall back to tier default
@@ -226,6 +287,14 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                             "Using custom delay %ds after %s", delay, entity_id
                         )
                     await asyncio.sleep(delay)
+
+        # Store result for notification reporting
+        hass.data.setdefault(DOMAIN, {})["last_action_result"] = {
+            "tier": tier,
+            "action": "tier_on",
+            "total": len(entity_ids),
+            "failed": failed_entities,
+        }
 
     async def handle_restore_all(call: ServiceCall) -> None:
         """Staged restore: restore tiers in configured order with delays."""

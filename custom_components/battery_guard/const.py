@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "2.9.0"
+VERSION = "2.10.0"
 
 # Platforms
 PLATFORMS = [
@@ -55,6 +55,14 @@ LABEL_DEFINITIONS = {
 
 # Entity domains tracked by Battery Guard
 TRACKED_DOMAINS = ["switch", "input_boolean", "climate", "light", "media_player"]
+
+# Debounce timers (seconds)
+OUTAGE_DEBOUNCE_SECONDS = 5
+RESTORE_DEBOUNCE_SECONDS = 30
+
+# Retry settings
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 2  # seconds, exponential backoff: 2s, 4s, 8s
 
 # Default thresholds
 DEFAULT_TIER2_THRESHOLD = 30
