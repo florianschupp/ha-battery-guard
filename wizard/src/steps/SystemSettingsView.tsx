@@ -131,44 +131,95 @@ export function SystemSettingsView() {
         </div>
       </div>
 
-      {/* Thresholds — editable */}
+      {/* Power Outage Stages */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
           <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
             <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
             </svg>
-            Battery Thresholds
+            Power Outage Stages
           </h3>
         </div>
-        <div className="px-5 py-4 space-y-5">
-          <ThresholdInput
-            label="Tier 2 Threshold"
-            description="Turn off T2 devices when battery drops below this level"
-            value={config.tier2_threshold}
-            min={10}
-            max={90}
-            step={5}
-            onChange={(v) => updateThreshold('tier2_threshold', v)}
-          />
-          <ThresholdInput
-            label="Recovery Threshold"
-            description="Re-enable T2 devices when battery recovers above this level"
-            value={config.recovery_threshold}
-            min={10}
-            max={90}
-            step={5}
-            onChange={(v) => updateThreshold('recovery_threshold', v)}
-          />
-          <ThresholdInput
-            label="Critical SOC"
-            description="Emergency shutdown of remaining devices at this battery level"
-            value={config.critical_soc}
-            min={5}
-            max={30}
-            step={1}
-            onChange={(v) => updateThreshold('critical_soc', v)}
-          />
+        <div className="px-5 py-4">
+          <p className="text-xs text-gray-500 mb-5">
+            During a power outage, Battery Guard executes device actions in stages as the battery level drops.
+            If the battery is already below a threshold when the outage starts, all applicable stages trigger immediately.
+          </p>
+
+          <div className="space-y-0">
+            {/* Stage 1: Outage Detected */}
+            <div className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <div className="w-7 h-7 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center text-xs font-bold shrink-0">1</div>
+                <div className="w-px flex-1 bg-gray-200 my-1" />
+              </div>
+              <div className="pb-5 flex-1">
+                <p className="text-sm font-medium text-gray-700">Power Outage Detected</p>
+                <p className="text-xs text-gray-400 mt-0.5">Tier 1 actions execute immediately (low-priority devices)</p>
+              </div>
+            </div>
+
+            {/* Stage 2: Tier 2 Threshold */}
+            <div className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <div className="w-7 h-7 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-xs font-bold shrink-0">2</div>
+                <div className="w-px flex-1 bg-gray-200 my-1" />
+              </div>
+              <div className="pb-4 flex-1">
+                <ThresholdInput
+                  label="Tier 2 Actions"
+                  description="Execute Tier 2 device actions when battery drops below this level"
+                  value={config.tier2_threshold}
+                  min={10}
+                  max={90}
+                  step={5}
+                  onChange={(v) => updateThreshold('tier2_threshold', v)}
+                />
+              </div>
+            </div>
+
+            {/* Stage 3: Critical SOC */}
+            <div className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <div className="w-7 h-7 rounded-full bg-red-100 text-red-700 flex items-center justify-center text-xs font-bold shrink-0">3</div>
+                <div className="w-px flex-1 bg-gray-200 my-1" />
+              </div>
+              <div className="pb-4 flex-1">
+                <ThresholdInput
+                  label="Critical Battery"
+                  description="Emergency alert — only Tier 3 (critical) devices remain active"
+                  value={config.critical_soc}
+                  min={5}
+                  max={30}
+                  step={1}
+                  onChange={(v) => updateThreshold('critical_soc', v)}
+                />
+              </div>
+            </div>
+
+            {/* Recovery */}
+            <div className="flex gap-3">
+              <div className="flex flex-col items-center">
+                <div className="w-7 h-7 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18" />
+                  </svg>
+                </div>
+              </div>
+              <div className="pb-1 flex-1">
+                <ThresholdInput
+                  label="Tier 2 Recovery"
+                  description="Reverse Tier 2 actions when battery recovers above this level (must be higher than T2 threshold to prevent flicker)"
+                  value={config.recovery_threshold}
+                  min={10}
+                  max={90}
+                  step={5}
+                  onChange={(v) => updateThreshold('recovery_threshold', v)}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
