@@ -41,6 +41,9 @@ function WizardRouter() {
         // Check if already configured → go to dashboard
         const configured = await hasExistingConfig()
         if (cancelled) return
+        if (configured) {
+          dispatch({ type: 'SET_DEPLOYED', deployed: true })
+        }
         setCurrentStep(configured ? 'dashboard' : 'discovery')
       })
       .catch((err) => {
