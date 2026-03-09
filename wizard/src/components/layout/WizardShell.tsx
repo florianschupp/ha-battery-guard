@@ -15,12 +15,12 @@ interface ReleaseNote {
 /** Navigation tabs shown when deployed */
 const NAV_TABS: { step: WizardStep; label: string }[] = [
   { step: 'dashboard', label: 'Appliances' },
-  { step: 'settings', label: 'System' },
-  { step: 'restore', label: 'Restore' },
+  { step: 'settings', label: 'Outage' },
+  { step: 'configuration', label: 'Configuration' },
 ]
 
 /** Steps that are part of the deployed navigation (not wizard flow) */
-const DEPLOYED_STEPS: WizardStep[] = ['dashboard', 'settings', 'restore']
+const DEPLOYED_STEPS: WizardStep[] = ['dashboard', 'settings', 'configuration']
 
 /** Modal showing release notes fetched from GitHub */
 function ReleaseNotesModal({

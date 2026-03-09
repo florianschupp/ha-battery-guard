@@ -8,6 +8,7 @@ import { RestoreStep } from './steps/RestoreStep'
 import { SummaryStep } from './steps/SummaryStep'
 import { DashboardView } from './steps/DashboardView'
 import { SystemSettingsView } from './steps/SystemSettingsView'
+import { ConfigurationView } from './steps/ConfigurationView'
 import { connectFromPanel, isInsidePanel, listEntities } from './services/ha-websocket'
 import { BATTERY_GUARD_LABEL_IDS } from './lib/constants'
 
@@ -84,6 +85,8 @@ function WizardRouter() {
       return <DashboardView />
     case 'settings':
       return <SystemSettingsView />
+    case 'configuration':
+      return <ConfigurationView />
     default:
       return <ConnectionStep />
   }

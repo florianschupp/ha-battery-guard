@@ -3,7 +3,6 @@ import { useWizard } from '../hooks/useWizard'
 import { WIZARD_STEPS } from '../types/wizard-types'
 import { TIER_DISPLAY } from '../lib/constants'
 import { loadRestoreConfig } from '../services/entity-service'
-import { setRestoreConfig as saveRestoreConfig } from '../services/ha-websocket'
 
 /** Tier keys in restore order with display config */
 const RESTORE_TIERS = [
@@ -15,9 +14,6 @@ const RESTORE_TIERS = [
 export function RestoreStep() {
   const { config, dispatch, setCurrentStep } = useWizard()
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const isStandalone = config.deployed
 
   const loadConfig = useCallback(async () => {
     setLoading(true)
@@ -80,48 +76,21 @@ export function RestoreStep() {
             Configure how devices restart when grid power returns.
           </p>
         </div>
-        {isStandalone ? (
+        <div className="flex gap-2">
           <button
-            onClick={async () => {
-              setSaving(true)
-              setSaved(false)
-              try {
-                await saveRestoreConfig(config.restoreConfig)
-                setSaved(true)
-                setTimeout(() => setSaved(false), 3000)
-              } finally {
-                setSaving(false)
-              }
-            }}
-            disabled={saving}
-            className="py-2 px-5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-medium rounded-lg transition-colors"
+            onClick={() => setCurrentStep(WIZARD_STEPS[2])}
+            className="py-2 px-4 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
           >
-            {saving ? 'Saving...' : 'Save'}
+            Back
           </button>
-        ) : (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setCurrentStep(WIZARD_STEPS[2])}
-              className="py-2 px-4 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Back
-            </button>
-            <button
-              onClick={() => setCurrentStep(WIZARD_STEPS[4])}
-              className="py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors"
-            >
-              Continue
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Success message (standalone mode) */}
-      {saved && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 mb-4 text-sm text-green-700">
-          Restore settings saved successfully.
+          <button
+            onClick={() => setCurrentStep(WIZARD_STEPS[4])}
+            className="py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors"
+          >
+            Continue
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Info box */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-4 text-sm text-blue-800">

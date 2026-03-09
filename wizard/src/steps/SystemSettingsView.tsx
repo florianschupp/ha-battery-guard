@@ -1,15 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStatus } from '../hooks/useStatus'
-import { getConfig, getDeviceActions, listEntities, setConfig } from '../services/ha-websocket'
-import type { DeviceActions } from '../types/wizard-types'
+import { getConfig, getDeviceActions, setConfig, getRestoreConfig, setRestoreConfig as saveRestoreConfig } from '../services/ha-websocket'
+import { discoverEntities } from '../services/entity-service'
+import { TIER_DISPLAY, DEFAULT_RESTORE_CONFIG } from '../lib/constants'
+import type { DeviceActions, RestoreConfig, WizardEntity } from '../types/wizard-types'
 
 interface SystemConfig {
-  soc_sensor: string
-  grid_sensor: string
-  use_voltage: boolean
-  voltage_phase_a: string
-  voltage_phase_b: string
-  voltage_phase_c: string
   tier2_threshold: number
   recovery_threshold: number
   critical_soc: number
@@ -89,12 +85,6 @@ function formatTierSummary(stat: TierStat, isCritical = false): string {
 }
 
 const DEFAULT_CONFIG: SystemConfig = {
-  soc_sensor: '',
-  grid_sensor: '',
-  use_voltage: false,
-  voltage_phase_a: '',
-  voltage_phase_b: '',
-  voltage_phase_c: '',
   tier2_threshold: 30,
   recovery_threshold: 40,
   critical_soc: 10,
@@ -103,9 +93,18 @@ const DEFAULT_CONFIG: SystemConfig = {
   notify_services: [],
 }
 
+/** Tier keys in restore order with display config */
+const RESTORE_TIERS = [
+  { key: 'tier3', label: 'Tier 3', tierId: 'battery_guard_tier3' },
+  { key: 'tier2', label: 'Tier 2', tierId: 'battery_guard_tier2' },
+  { key: 'tier1', label: 'Tier 1', tierId: 'battery_guard_tier1' },
+] as const
+
 export function SystemSettingsView() {
   const [config, setLocalConfig] = useState<SystemConfig>(DEFAULT_CONFIG)
   const [tierStats, setTierStats] = useState<TierStats>(EMPTY_TIER_STATS)
+  const [entities, setEntities] = useState<WizardEntity[]>([])
+  const [restoreConfig, setLocalRestoreConfig] = useState<RestoreConfig>(DEFAULT_RESTORE_CONFIG)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -118,17 +117,19 @@ export function SystemSettingsView() {
     loaded.current = true
     let cancelled = false
 
-    // Fetch config, entities, and device actions in parallel
+    // Fetch config, entities, device actions, and restore config in parallel
     Promise.all([
       getConfig().catch(() => null),
-      listEntities().catch(() => []),
+      discoverEntities().catch(() => [] as WizardEntity[]),
       getDeviceActions().catch(() => ({})),
-    ]).then(([configData, entities, deviceActions]) => {
+      getRestoreConfig().catch(() => DEFAULT_RESTORE_CONFIG),
+    ]).then(([configData, discoveredEntities, deviceActions, restoreData]) => {
       if (cancelled) return
       if (configData) setLocalConfig(configData as unknown as SystemConfig)
-      const typedEntities = entities as { entity_id: string; labels: string[] }[]
       const typedActions = deviceActions as DeviceActions
-      setTierStats(computeTierStats(typedEntities, typedActions))
+      setTierStats(computeTierStats(discoveredEntities, typedActions))
+      setEntities(discoveredEntities)
+      setLocalRestoreConfig(restoreData)
     }).finally(() => { if (!cancelled) setLoading(false) })
 
     return () => { cancelled = true }
@@ -150,14 +151,17 @@ export function SystemSettingsView() {
 
     setSaving(true)
     try {
-      await setConfig({
-        tier2_threshold: config.tier2_threshold,
-        recovery_threshold: config.recovery_threshold,
-        critical_soc: config.critical_soc,
-        battery_max_soc: config.battery_max_soc,
-        battery_min_soc: config.battery_min_soc,
-        notify_services: config.notify_services,
-      })
+      await Promise.all([
+        setConfig({
+          tier2_threshold: config.tier2_threshold,
+          recovery_threshold: config.recovery_threshold,
+          critical_soc: config.critical_soc,
+          battery_max_soc: config.battery_max_soc,
+          battery_min_soc: config.battery_min_soc,
+          notify_services: config.notify_services,
+        }),
+        saveRestoreConfig(restoreConfig),
+      ])
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
@@ -179,39 +183,10 @@ export function SystemSettingsView() {
     <div className="space-y-6">
       {/* Page header */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">System Settings</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Outage Settings</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Configure battery thresholds, sensors, and notifications.
+          Configure battery thresholds and device restore behavior during power outages.
         </p>
-      </div>
-
-      {/* Sensors — read-only */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
-          <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.348 14.652a3.75 3.75 0 010-5.304m5.304 0a3.75 3.75 0 010 5.304m-7.425 2.121a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-            </svg>
-            Sensors
-          </h3>
-        </div>
-        <div className="px-5 py-4 space-y-3">
-          <SensorRow label="SOC Sensor" value={config.soc_sensor} />
-          <SensorRow label="Grid Sensor" value={config.grid_sensor} />
-          {config.use_voltage && (
-            <>
-              <div className="border-t border-gray-100 pt-3">
-                <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Voltage Monitoring</span>
-              </div>
-              <SensorRow label="Phase A" value={config.voltage_phase_a} />
-              <SensorRow label="Phase B" value={config.voltage_phase_b} />
-              <SensorRow label="Phase C" value={config.voltage_phase_c} />
-            </>
-          )}
-          <p className="text-xs text-gray-400 pt-1">
-            Sensors are configured via Home Assistant &rarr; Settings &rarr; Integrations &rarr; Battery Guard &rarr; Configure.
-          </p>
-        </div>
       </div>
 
       {/* Power Outage Stages */}
@@ -261,34 +236,167 @@ export function SystemSettingsView() {
         </div>
       </div>
 
-      {/* Notifications — read-only list */}
+      {/* Restore Settings */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
           <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
             <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
             </svg>
-            Notifications
+            Restore Settings
           </h3>
         </div>
         <div className="px-5 py-4">
-          {config.notify_services.length === 0 ? (
-            <p className="text-sm text-gray-400">No notification services configured.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {config.notify_services.map((svc) => (
-                <div key={svc} className="flex items-center gap-2 text-sm text-gray-700">
-                  <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  <code className="text-xs bg-gray-50 px-2 py-0.5 rounded">{svc}</code>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 mb-5 text-sm text-blue-800">
+            <p className="mb-1 font-medium">Staged restore prevents inverter overload</p>
+            <p className="text-xs text-blue-700">
+              Devices are restored in order T3 &rarr; T2 &rarr; T1 with configurable delays
+              between tiers and individual devices.
+            </p>
+          </div>
+
+          {/* Tier delay cards */}
+          <div className="space-y-3 mb-5">
+            {RESTORE_TIERS.map((tier) => {
+              const display = TIER_DISPLAY[tier.tierId as keyof typeof TIER_DISPLAY]
+              const delays = restoreConfig.tier_delays[tier.key] || { tier_delay: 0, device_delay: 5 }
+              const entityCount = entities.filter((e) => e.labels.includes(tier.tierId)).length
+              const dotColor = tier.key === 'tier1' ? 'bg-red-500' : tier.key === 'tier2' ? 'bg-amber-500' : 'bg-green-500'
+
+              return (
+                <div key={tier.key} className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`w-2 h-2 rounded-full ${dotColor}`} />
+                    <span className="text-xs font-semibold text-gray-700">{display.label.split(' — ')[0]}</span>
+                    <span className="text-[10px] text-gray-400">({entityCount} device{entityCount !== 1 ? 's' : ''})</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] text-gray-500 mb-1">Wait before restore</label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          max={300}
+                          step={5}
+                          value={delays.tier_delay}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10) || 0
+                            setLocalRestoreConfig((prev) => ({
+                              ...prev,
+                              tier_delays: { ...prev.tier_delays, [tier.key]: { ...delays, tier_delay: Math.max(0, v) } },
+                            }))
+                            setSaved(false)
+                          }}
+                          className="w-16 border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <span className="text-[10px] text-gray-400">s</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-500 mb-1">Delay between devices</label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          max={60}
+                          step={1}
+                          value={delays.device_delay}
+                          onChange={(e) => {
+                            const v = parseInt(e.target.value, 10) || 0
+                            setLocalRestoreConfig((prev) => ({
+                              ...prev,
+                              tier_delays: { ...prev.tier_delays, [tier.key]: { ...delays, device_delay: Math.max(0, v) } },
+                            }))
+                            setSaved(false)
+                          }}
+                          className="w-16 border border-gray-200 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <span className="text-[10px] text-gray-400">s</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-          <p className="text-xs text-gray-400 mt-3">
-            Notification services are configured via Home Assistant &rarr; Settings &rarr; Integrations &rarr; Battery Guard &rarr; Configure.
-          </p>
+              )
+            })}
+          </div>
+
+          {/* Per-device restore settings */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-700 mb-1">Per-Device Settings</h4>
+            <p className="text-[10px] text-gray-500 mb-2">
+              Override restore behavior for individual devices. &quot;Standard&quot; uses the tier default delay.
+            </p>
+            {(() => {
+              const assigned = entities.filter((e) =>
+                e.labels.some((l) => l === 'battery_guard_tier1' || l === 'battery_guard_tier2' || l === 'battery_guard_tier3'),
+              )
+              if (assigned.length === 0) {
+                return <p className="text-xs text-gray-400 py-1">No assigned devices.</p>
+              }
+              return (
+                <div className="space-y-1">
+                  {assigned.map((entity) => {
+                    const isStayOff = restoreConfig.stay_off.includes(entity.entity_id)
+                    const customDelay = restoreConfig.device_delays?.[entity.entity_id]
+                    const mode: 'standard' | 'custom_delay' | 'do_not_restore' =
+                      isStayOff ? 'do_not_restore' : customDelay !== undefined ? 'custom_delay' : 'standard'
+
+                    function handleModeChange(newMode: string) {
+                      setLocalRestoreConfig((prev) => {
+                        const newStayOff = prev.stay_off.filter((id) => id !== entity.entity_id)
+                        const newDelays = { ...prev.device_delays }
+                        delete newDelays[entity.entity_id]
+
+                        if (newMode === 'do_not_restore') newStayOff.push(entity.entity_id)
+                        if (newMode === 'custom_delay') newDelays[entity.entity_id] = 30
+
+                        return { ...prev, stay_off: newStayOff, device_delays: newDelays }
+                      })
+                      setSaved(false)
+                    }
+
+                    return (
+                      <div key={entity.entity_id} className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-gray-50">
+                        <span className="text-[10px] text-gray-400 bg-gray-100 px-1 py-0.5 rounded shrink-0">{entity.domain}</span>
+                        <span className="text-xs text-gray-700 truncate min-w-0 flex-1">{entity.friendly_name}</span>
+                        <select
+                          value={mode}
+                          onChange={(e) => handleModeChange(e.target.value)}
+                          className="border border-gray-200 rounded px-1.5 py-0.5 text-[10px] bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 shrink-0"
+                        >
+                          <option value="standard">Standard</option>
+                          <option value="custom_delay">Custom Delay</option>
+                          <option value="do_not_restore">Do Not Restore</option>
+                        </select>
+                        {mode === 'custom_delay' && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <input
+                              type="number"
+                              min={1}
+                              max={300}
+                              step={5}
+                              value={customDelay ?? 30}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value, 10) || 1
+                                setLocalRestoreConfig((prev) => ({
+                                  ...prev,
+                                  device_delays: { ...prev.device_delays, [entity.entity_id]: v },
+                                }))
+                                setSaved(false)
+                              }}
+                              className="w-12 border border-gray-200 rounded px-1.5 py-0.5 text-[10px] text-right bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <span className="text-[10px] text-gray-400">s</span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </div>
         </div>
       </div>
 
@@ -300,7 +408,7 @@ export function SystemSettingsView() {
       )}
       {saved && (
         <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">
-          Settings saved successfully. Integration reloaded.
+          Outage settings and restore configuration saved. Integration reloaded.
         </div>
       )}
 
@@ -314,20 +422,6 @@ export function SystemSettingsView() {
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
-    </div>
-  )
-}
-
-/** Read-only sensor display row */
-function SensorRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-600">{label}</span>
-      {value ? (
-        <code className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded">{value}</code>
-      ) : (
-        <span className="text-xs text-gray-400 italic">Not configured</span>
-      )}
     </div>
   )
 }
