@@ -317,22 +317,6 @@ function BatteryStageSlider({
     <div className="select-none">
       {/* Slider track */}
       <div className="px-3">
-        <div className="flex justify-between items-center text-[10px] text-gray-400 mb-1.5">
-          <span className="flex items-center gap-1">
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M17 4H5a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2zm0 14H5V6h12v12zm3-10v8h1a1 1 0 001-1V9a1 1 0 00-1-1h-1z" />
-              <rect x="6" y="7.5" width="10" height="9" rx="0.5" opacity="0.5" />
-            </svg>
-            100%
-          </span>
-          <span className="flex items-center gap-1">
-            0%
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M17 4H5a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2zm0 14H5V6h12v12zm3-10v8h1a1 1 0 001-1V9a1 1 0 00-1-1h-1z" />
-              <rect x="6" y="14" width="3" height="2.5" rx="0.5" opacity="0.3" />
-            </svg>
-          </span>
-        </div>
         <div
           ref={trackRef}
           className="relative h-6 cursor-pointer"
@@ -365,26 +349,36 @@ function BatteryStageSlider({
           ))}
         </div>
 
-        {/* Current SOC indicator */}
-        {currentSoc !== null && (
-          <div className="relative h-6 mt-1">
+        {/* Scale labels + SOC indicator below slider */}
+        <div className="relative h-7 mt-1.5">
+          {/* 100% label — left */}
+          <div className="absolute left-0 top-0 flex items-center gap-1 text-[10px] text-gray-400">
+            <BatteryIcon fill={1} className="w-3.5 h-3.5" />
+            <span>100%</span>
+          </div>
+
+          {/* 0% label — right */}
+          <div className="absolute right-0 top-0 flex items-center gap-1 text-[10px] text-gray-400">
+            <span>0%</span>
+            <BatteryIcon fill={0} className="w-3.5 h-3.5" />
+          </div>
+
+          {/* Current SOC indicator */}
+          {currentSoc !== null && (
             <div
               className="absolute -translate-x-1/2 flex flex-col items-center"
-              style={{ left: `${100 - currentSoc}%` }}
+              style={{ left: `${100 - currentSoc}%`, top: 0 }}
             >
-              <svg className="w-2.5 h-2.5 text-gray-700" viewBox="0 0 10 6" fill="currentColor">
+              <svg className="w-2.5 h-2 text-gray-700" viewBox="0 0 10 6" fill="currentColor">
                 <path d="M5 0L10 6H0z" />
               </svg>
-              <span className="flex items-center gap-1 mt-0.5 text-[10px] font-semibold text-gray-700 whitespace-nowrap bg-white/80 px-1 rounded">
-                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor" style={{ opacity: 0.7 }}>
-                  <path d="M17 4H5a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2zm0 14H5V6h12v12zm3-10v8h1a1 1 0 001-1V9a1 1 0 00-1-1h-1z" />
-                  <rect x="6" y={18 - (currentSoc / 100) * 11} width="10" height={(currentSoc / 100) * 11} rx="0.5" opacity="0.4" />
-                </svg>
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-gray-700 whitespace-nowrap">
+                <BatteryIcon fill={currentSoc / 100} className="w-3.5 h-3.5 opacity-70" />
                 {currentSoc}%
               </span>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Legend — ordered left-to-right matching the slider */}
@@ -486,5 +480,18 @@ function ZoneLegendRow({
         <p className="text-xs text-gray-400 mt-0.5">{description}</p>
       </div>
     </div>
+  )
+}
+
+/** Battery icon with dynamic fill level (0–1) */
+function BatteryIcon({ fill, className }: { fill: number; className?: string }) {
+  const fillHeight = Math.max(0, Math.min(1, fill)) * 11
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17 4H5a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2zm0 14H5V6h12v12zm3-10v8h1a1 1 0 001-1V9a1 1 0 00-1-1h-1z" />
+      {fillHeight > 0 && (
+        <rect x="6" y={18 - fillHeight} width="10" height={fillHeight} rx="0.5" opacity="0.45" />
+      )}
+    </svg>
   )
 }
