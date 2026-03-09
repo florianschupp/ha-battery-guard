@@ -363,21 +363,30 @@ function BatteryStageSlider({
             <BatteryIcon fill={0} className="w-3.5 h-3.5" />
           </div>
 
-          {/* Current SOC indicator */}
-          {currentSoc !== null && (
-            <div
-              className="absolute -translate-x-1/2 flex flex-col items-center"
-              style={{ left: `${100 - currentSoc}%`, top: 0 }}
-            >
-              <svg className="w-2.5 h-2 text-gray-700" viewBox="0 0 10 6" fill="currentColor">
-                <path d="M5 0L10 6H0z" />
-              </svg>
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-gray-700 whitespace-nowrap">
-                <BatteryIcon fill={currentSoc / 100} className="w-3.5 h-3.5 opacity-70" />
-                {currentSoc}%
-              </span>
-            </div>
-          )}
+          {/* Current SOC indicator — colored by active tier */}
+          {currentSoc !== null && (() => {
+            const tierColor = currentSoc >= recovery
+              ? 'text-blue-500'
+              : currentSoc >= tier2
+                ? 'text-yellow-500'
+                : currentSoc >= critical
+                  ? 'text-orange-500'
+                  : 'text-red-500'
+            return (
+              <div
+                className={`absolute -translate-x-1/2 flex flex-col items-center ${tierColor}`}
+                style={{ left: `${100 - currentSoc}%`, top: 0 }}
+              >
+                <svg className="w-2.5 h-2" viewBox="0 0 10 6" fill="currentColor">
+                  <path d="M5 0L10 6H0z" />
+                </svg>
+                <span className="flex items-center gap-1 text-[10px] font-semibold whitespace-nowrap">
+                  <BatteryIcon fill={currentSoc / 100} className="w-3.5 h-3.5" />
+                  {currentSoc}%
+                </span>
+              </div>
+            )
+          })()}
         </div>
       </div>
 
