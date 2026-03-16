@@ -141,7 +141,7 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
         config_entry,
     ) -> BatteryGuardOptionsFlow:
         """Return the options flow handler."""
-        return BatteryGuardOptionsFlow(config_entry)
+        return BatteryGuardOptionsFlow()
 
 
 class BatteryGuardOptionsFlow(OptionsFlow):
@@ -153,9 +153,8 @@ class BatteryGuardOptionsFlow(OptionsFlow):
     Sensor changes trigger an integration reload to pick up the new entities.
     """
 
-    def __init__(self, config_entry) -> None:
+    def __init__(self) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
         self._data: dict[str, Any] = {}
 
     async def async_step_init(
