@@ -192,7 +192,10 @@ class BatteryGuardAutomationEngine:
             if self._outage_debounce_handle:
                 self._outage_debounce_handle()
                 self._outage_debounce_handle = None
-                _LOGGER.info("Grid flicker detected — outage cancelled (< %ds)", OUTAGE_DEBOUNCE_SECONDS)
+                _LOGGER.info(
+                    "Grid flicker detected — outage cancelled (< %ds)",
+                    OUTAGE_DEBOUNCE_SECONDS,
+                )
             if self._restore_debounce_handle:
                 self._restore_debounce_handle()
             _LOGGER.info(
@@ -261,9 +264,7 @@ class BatteryGuardAutomationEngine:
                     mode,
                 )
             except Exception:
-                _LOGGER.exception(
-                    "Battery optimization: failed to set %s", entity_id
-                )
+                _LOGGER.exception("Battery optimization: failed to set %s", entity_id)
 
     async def _on_power_outage(self) -> None:
         """Handle power outage: activate emergency mode, tier 1 off, notify."""

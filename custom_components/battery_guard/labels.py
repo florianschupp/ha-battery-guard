@@ -12,9 +12,7 @@ from .const import DOMAIN, LABEL_DEFINITIONS
 _LOGGER = logging.getLogger(__name__)
 
 
-def _find_label_by_name(
-    label_reg: lr.LabelRegistry, name: str
-) -> lr.LabelEntry | None:
+def _find_label_by_name(label_reg: lr.LabelRegistry, name: str) -> lr.LabelEntry | None:
     """Find a label by its display name."""
     for label in label_reg.labels.values():
         if label.name == name:
@@ -40,9 +38,7 @@ async def async_ensure_labels(hass: HomeAssistant) -> dict[str, str]:
 
         if existing is not None:
             label_map[logical_key] = existing.label_id
-            _LOGGER.debug(
-                "Label exists: %s -> %s", logical_key, existing.label_id
-            )
+            _LOGGER.debug("Label exists: %s -> %s", logical_key, existing.label_id)
         else:
             _LOGGER.info("Creating label: %s", label_name)
             try:
@@ -59,9 +55,7 @@ async def async_ensure_labels(hass: HomeAssistant) -> dict[str, str]:
                 if found:
                     label_map[logical_key] = found.label_id
                 else:
-                    _LOGGER.error(
-                        "Failed to create or find label: %s", label_name
-                    )
+                    _LOGGER.error("Failed to create or find label: %s", label_name)
 
     return label_map
 

@@ -179,9 +179,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         failed_entities: list[str] = []
         action_counts: dict[str, int] = {}
 
-        _LOGGER.info(
-            "Executing tier %s actions for %d entities", tier, len(entity_ids)
-        )
+        _LOGGER.info("Executing tier %s actions for %d entities", tier, len(entity_ids))
 
         for entity_id in entity_ids:
             # 1. Save state before any action
@@ -198,9 +196,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
             # 4. Execute with retry
             success = await _retry_action(
-                lambda eid=entity_id, ac=action_config: execute_action(
-                    hass, eid, ac
-                ),
+                lambda eid=entity_id, ac=action_config: execute_action(hass, eid, ac),
                 entity_id,
                 action_name,
             )
@@ -272,9 +268,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         )
 
         for i, entity_id in enumerate(entity_ids):
-            saved = (
-                state_store.get_saved_state(entity_id) if state_store else None
-            )
+            saved = state_store.get_saved_state(entity_id) if state_store else None
 
             if saved:
                 success = await _retry_action(
@@ -301,9 +295,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                     "turn_on",
                 )
                 if success:
-                    _LOGGER.debug(
-                        "No saved state for %s — generic turn_on", entity_id
-                    )
+                    _LOGGER.debug("No saved state for %s — generic turn_on", entity_id)
                 else:
                     failed_entities.append(entity_id)
 
@@ -346,9 +338,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             # Wait before restoring this tier (skip delay for first tier)
             tier_delay = tier_delays_config.get(tier_key, {}).get("tier_delay", 0)
             if tier_delay > 0 and i > 0:
-                _LOGGER.info(
-                    "Waiting %ds before restoring %s", tier_delay, tier_key
-                )
+                _LOGGER.info("Waiting %ds before restoring %s", tier_delay, tier_key)
                 await asyncio.sleep(tier_delay)
 
             _LOGGER.info("Restoring tier: %s", tier_key)
@@ -428,9 +418,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
                     blocking=True,
                 )
             except Exception:
-                _LOGGER.exception(
-                    "Failed to send notification via %s", service_target
-                )
+                _LOGGER.exception("Failed to send notification via %s", service_target)
 
         # Always send persistent notification in HA UI
         await hass.services.async_call(

@@ -49,9 +49,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def async_register_websocket_api(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> None:
+def async_register_websocket_api(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Register WebSocket API commands."""
     websocket_api.async_register_command(hass, ws_get_version)
     websocket_api.async_register_command(hass, ws_get_config)
@@ -101,13 +99,19 @@ def ws_get_config(
             CONF_VOLTAGE_PHASE_A: data.get(CONF_VOLTAGE_PHASE_A, ""),
             CONF_VOLTAGE_PHASE_B: data.get(CONF_VOLTAGE_PHASE_B, ""),
             CONF_VOLTAGE_PHASE_C: data.get(CONF_VOLTAGE_PHASE_C, ""),
-            CONF_TIER2_THRESHOLD: data.get(CONF_TIER2_THRESHOLD, DEFAULT_TIER2_THRESHOLD),
+            CONF_TIER2_THRESHOLD: data.get(
+                CONF_TIER2_THRESHOLD, DEFAULT_TIER2_THRESHOLD
+            ),
             CONF_RECOVERY_THRESHOLD: data.get(
                 CONF_RECOVERY_THRESHOLD, DEFAULT_TIER2_RECOVERY_THRESHOLD
             ),
             CONF_CRITICAL_SOC: data.get(CONF_CRITICAL_SOC, DEFAULT_CRITICAL_SOC),
-            CONF_BATTERY_MAX_SOC: data.get(CONF_BATTERY_MAX_SOC, DEFAULT_BATTERY_MAX_SOC),
-            CONF_BATTERY_MIN_SOC: data.get(CONF_BATTERY_MIN_SOC, DEFAULT_BATTERY_MIN_SOC),
+            CONF_BATTERY_MAX_SOC: data.get(
+                CONF_BATTERY_MAX_SOC, DEFAULT_BATTERY_MAX_SOC
+            ),
+            CONF_BATTERY_MIN_SOC: data.get(
+                CONF_BATTERY_MIN_SOC, DEFAULT_BATTERY_MIN_SOC
+            ),
             CONF_NOTIFY_SERVICES: data.get(CONF_NOTIFY_SERVICES, []),
             CONF_BATTERY_OPTIMIZATION: data.get(
                 CONF_BATTERY_OPTIMIZATION, DEFAULT_BATTERY_OPTIMIZATION
@@ -255,9 +259,7 @@ async def ws_set_device_actions(
     new_options = {**entry.options, CONF_DEVICE_ACTIONS: new_device_actions}
     hass.config_entries.async_update_entry(entry, options=new_options)
 
-    _LOGGER.info(
-        "Updated device_actions for %d entities", len(new_device_actions)
-    )
+    _LOGGER.info("Updated device_actions for %d entities", len(new_device_actions))
     connection.send_result(msg["id"], {"success": True})
 
 

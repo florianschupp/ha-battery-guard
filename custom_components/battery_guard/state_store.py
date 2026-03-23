@@ -69,15 +69,11 @@ class StateStore:
         data = await self._store.async_load()
         if data and isinstance(data, dict) and "states" in data:
             self._states = data["states"]
-            _LOGGER.info(
-                "Restored %d saved device states from disk", len(self._states)
-            )
+            _LOGGER.info("Restored %d saved device states from disk", len(self._states))
 
     def _schedule_save(self) -> None:
         """Schedule an async persist to disk."""
-        self.hass.async_create_task(
-            self._store.async_save({"states": self._states})
-        )
+        self.hass.async_create_task(self._store.async_save({"states": self._states}))
 
     def save_state(self, entity_id: str) -> None:
         """Capture the current state of a device.
@@ -87,9 +83,7 @@ class StateStore:
         This preserves the original pre-outage state.
         """
         if entity_id in self._states:
-            _LOGGER.debug(
-                "State already saved for %s — keeping original", entity_id
-            )
+            _LOGGER.debug("State already saved for %s — keeping original", entity_id)
             return
 
         state = self.hass.states.get(entity_id)
@@ -285,9 +279,7 @@ async def restore_state(
                     blocking=True,
                 )
             except Exception:
-                _LOGGER.debug(
-                    "Could not restore fan_mode for %s", entity_id
-                )
+                _LOGGER.debug("Could not restore fan_mode for %s", entity_id)
 
     elif domain == "light":
         service_data: dict[str, Any] = {}

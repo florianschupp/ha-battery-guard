@@ -27,9 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 BatteryGuardConfigEntry = ConfigEntry
 
 
-async def async_migrate_entry(
-    hass: HomeAssistant, config_entry: ConfigEntry
-) -> bool:
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate config entry from older versions.
 
     v1 → v2: Initialize device_actions in options.
@@ -74,9 +72,7 @@ async def async_migrate_entry(
                 CONF_BATTERY_MIN_SOC, DEFAULT_BATTERY_MIN_SOC
             ),
         }
-        hass.config_entries.async_update_entry(
-            config_entry, data=new_data, version=4
-        )
+        hass.config_entries.async_update_entry(config_entry, data=new_data, version=4)
         _LOGGER.info("Migration to version 4 complete")
 
     if config_entry.version < 5:
@@ -86,9 +82,7 @@ async def async_migrate_entry(
                 CONF_BATTERY_OPTIMIZATION, DEFAULT_BATTERY_OPTIMIZATION
             ),
         }
-        hass.config_entries.async_update_entry(
-            config_entry, data=new_data, version=5
-        )
+        hass.config_entries.async_update_entry(config_entry, data=new_data, version=5)
         _LOGGER.info("Migration to version 5 complete")
 
     return True
