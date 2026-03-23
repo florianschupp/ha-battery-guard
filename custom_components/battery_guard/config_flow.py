@@ -44,11 +44,21 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self.data: dict[str, Any] = {}
+        self._backup_data: dict[str, Any] | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 1: SOC thresholds."""
+        """Step 1: Check for existing backup, then SOC thresholds."""
+        # Check for existing backup on first entry
+        if user_input is None and self._backup_data is None:
+            from . import ConfigBackup
+
+            backup = ConfigBackup(self.hass)
+            self._backup_data = await backup.load()
+            if self._backup_data:
+                return await self.async_step_restore()
+
         errors: dict[str, str] = {}
         if user_input is not None:
             if user_input[CONF_RECOVERY_THRESHOLD] <= user_input[CONF_TIER2_THRESHOLD]:
@@ -99,6 +109,37 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def async_step_restore(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 1b: Offer to restore from backup."""
+        if user_input is not None:
+            if user_input.get("restore", False):
+                # Restore from backup
+                backup = self._backup_data
+                if backup and "data" in backup:
+                    self.data = {**backup["data"]}
+                    # Also store options to apply after entry creation
+                    self._restore_options = backup.get("options", {})
+                    return await self.async_step_notifications()
+            # User chose not to restore — continue normal flow
+            self._backup_data = None
+            return await self.async_step_user()
+
+        backup_time = ""
+        if self._backup_data and "backup_time" in self._backup_data:
+            backup_time = self._backup_data["backup_time"][:10]
+
+        return self.async_show_form(
+            step_id="restore",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("restore", default=True): bool,
+                }
+            ),
+            description_placeholders={"backup_time": backup_time},
+        )
+
     async def async_step_notifications(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -109,6 +150,13 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
             self.data.setdefault(CONF_SOC_SENSOR, "")
             self.data.setdefault(CONF_GRID_SENSOR, "")
             self.data.setdefault(CONF_USE_VOLTAGE, False)
+
+            # If restoring, include options in data temporarily
+            # They'll be moved to options in async_setup_entry
+            restore_options = getattr(self, "_restore_options", None)
+            if restore_options:
+                self.data["_restore_options"] = restore_options
+
             return self.async_create_entry(
                 title="Battery Guard",
                 data=self.data,

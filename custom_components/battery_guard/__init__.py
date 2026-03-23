@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 
 from .const import (
     CONF_BATTERY_MAX_SOC,
@@ -25,6 +27,38 @@ from .state_store import StateStore
 _LOGGER = logging.getLogger(__name__)
 
 BatteryGuardConfigEntry = ConfigEntry
+
+BACKUP_STORAGE_KEY = "battery_guard.config_backup"
+BACKUP_STORAGE_VERSION = 1
+
+
+class ConfigBackup:
+    """Auto-backup config to .storage on every change."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize config backup."""
+        self._store: Store = Store(hass, BACKUP_STORAGE_VERSION, BACKUP_STORAGE_KEY)
+
+    async def save(self, entry: ConfigEntry) -> None:
+        """Save current config as backup."""
+        from homeassistant.util.dt import utcnow
+
+        await self._store.async_save(
+            {
+                "version": entry.version,
+                "data": dict(entry.data),
+                "options": dict(entry.options),
+                "backup_time": utcnow().isoformat(),
+            }
+        )
+        _LOGGER.debug("Config backup saved")
+
+    async def load(self) -> dict[str, Any] | None:
+        """Load backup if it exists."""
+        data = await self._store.async_load()
+        if data and isinstance(data, dict) and "data" in data:
+            return data
+        return None
 
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
@@ -99,6 +133,16 @@ async def async_setup_entry(
 ) -> bool:
     """Set up Battery Guard from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+
+    # Apply restored options from config flow backup restore
+    restore_options = dict(entry.data).pop("_restore_options", None)
+    if restore_options:
+        new_data = {k: v for k, v in entry.data.items() if k != "_restore_options"}
+        hass.config_entries.async_update_entry(
+            entry, data=new_data, options={**entry.options, **restore_options}
+        )
+        _LOGGER.info("Applied restored options from backup")
+
     hass.data[DOMAIN][entry.entry_id] = {
         "config": entry.data,
     }
@@ -128,6 +172,11 @@ async def async_setup_entry(
     from .services import async_setup_services
 
     await async_setup_services(hass, entry)
+
+    # Auto-backup config and make backup available for WebSocket API
+    config_backup = ConfigBackup(hass)
+    await config_backup.save(entry)
+    hass.data[DOMAIN]["config_backup"] = config_backup
 
     # Register WebSocket API for wizard frontend
     from .websocket_api import async_register_websocket_api

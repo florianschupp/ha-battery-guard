@@ -249,3 +249,17 @@ export async function setRestoreConfig(
     restore_config: restoreConfig,
   })
 }
+
+// ============================================================================
+// Config Export / Import
+// ============================================================================
+
+/** Export full Battery Guard configuration as JSON */
+export async function exportConfig(): Promise<Record<string, unknown>> {
+  return sendMessage<Record<string, unknown>>('battery_guard/export_config')
+}
+
+/** Import Battery Guard configuration from JSON */
+export async function importConfig(config: Record<string, unknown>): Promise<void> {
+  await sendMessage('battery_guard/import_config', { config })
+}

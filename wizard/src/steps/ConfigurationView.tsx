@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getConfig } from '../services/ha-websocket'
+import { getConfig, exportConfig, importConfig } from '../services/ha-websocket'
 
 interface ConfigData {
   soc_sensor: string
@@ -109,6 +109,24 @@ export function ConfigurationView() {
         </div>
       </div>
 
+      {/* Backup & Restore */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
+          <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+            </svg>
+            Backup &amp; Restore
+          </h3>
+        </div>
+        <div className="px-5 py-4 space-y-3">
+          <p className="text-sm text-gray-500">
+            Configuration is automatically backed up. If you reinstall Battery Guard, your settings will be offered for restore.
+          </p>
+          <BackupActions />
+        </div>
+      </div>
+
       {/* Info banner */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
         <p>
@@ -116,6 +134,87 @@ export function ConfigurationView() {
           <strong>Home Assistant &rarr; Settings &rarr; Integrations &rarr; Battery Guard &rarr; Configure</strong>.
         </p>
       </div>
+    </div>
+  )
+}
+
+/** Backup download / upload actions */
+function BackupActions() {
+  const [status, setStatus] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const handleExport = async () => {
+    setError(null)
+    setStatus(null)
+    try {
+      const data = await exportConfig()
+      const json = JSON.stringify(data, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `battery-guard-config-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setStatus('Configuration downloaded.')
+    } catch {
+      setError('Failed to export configuration.')
+    }
+  }
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(null)
+    setStatus(null)
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      const text = await file.text()
+      const config = JSON.parse(text)
+      if (!config.data || typeof config.data !== 'object') {
+        setError('Invalid configuration file: missing "data" section.')
+        return
+      }
+      await importConfig(config)
+      setStatus('Configuration imported successfully. Reloading...')
+      setTimeout(() => window.location.reload(), 2000)
+    } catch {
+      setError('Failed to import configuration. Check the file format.')
+    }
+
+    // Reset file input
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-3">
+        <button
+          onClick={handleExport}
+          className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700"
+        >
+          Download Configuration
+        </button>
+        <label className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-gray-700 cursor-pointer">
+          Upload Configuration
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json"
+            onChange={handleImport}
+            className="hidden"
+          />
+        </label>
+      </div>
+      {status && (
+        <p className="text-sm text-green-600">{status}</p>
+      )}
+      {error && (
+        <p className="text-sm text-red-600">{error}</p>
+      )}
     </div>
   )
 }

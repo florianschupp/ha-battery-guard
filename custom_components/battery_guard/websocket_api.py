@@ -58,6 +58,8 @@ def async_register_websocket_api(hass: HomeAssistant, entry: ConfigEntry) -> Non
     websocket_api.async_register_command(hass, ws_set_device_actions)
     websocket_api.async_register_command(hass, ws_get_restore_config)
     websocket_api.async_register_command(hass, ws_set_restore_config)
+    websocket_api.async_register_command(hass, ws_export_config)
+    websocket_api.async_register_command(hass, ws_import_config)
     _LOGGER.debug("Registered Battery Guard WebSocket API commands")
 
 
@@ -200,6 +202,12 @@ async def ws_set_config(
             new_data[key] = new_config[key]
 
     hass.config_entries.async_update_entry(entry, data=new_data)
+
+    # Auto-backup before reload (reload destroys current hass.data)
+    backup = hass.data.get(DOMAIN, {}).get("config_backup")
+    if backup:
+        await backup.save(entry)
+
     await hass.config_entries.async_reload(entry.entry_id)
 
     _LOGGER.info("Updated Battery Guard config (thresholds/notifications)")
@@ -259,6 +267,11 @@ async def ws_set_device_actions(
     new_options = {**entry.options, CONF_DEVICE_ACTIONS: new_device_actions}
     hass.config_entries.async_update_entry(entry, options=new_options)
 
+    # Auto-backup
+    backup = hass.data.get(DOMAIN, {}).get("config_backup")
+    if backup:
+        await backup.save(entry)
+
     _LOGGER.info("Updated device_actions for %d entities", len(new_device_actions))
     connection.send_result(msg["id"], {"success": True})
 
@@ -313,5 +326,101 @@ async def ws_set_restore_config(
     new_options = {**entry.options, CONF_RESTORE_CONFIG: new_restore_config}
     hass.config_entries.async_update_entry(entry, options=new_options)
 
+    # Auto-backup
+    backup = hass.data.get(DOMAIN, {}).get("config_backup")
+    if backup:
+        await backup.save(entry)
+
     _LOGGER.info("Updated restore_config")
+    connection.send_result(msg["id"], {"success": True})
+
+
+# ============================================================================
+# Config Export / Import
+# ============================================================================
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "battery_guard/export_config",
+    }
+)
+@callback
+def ws_export_config(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Export full Battery Guard configuration as JSON."""
+    entry: ConfigEntry | None = None
+    for e in hass.config_entries.async_entries(DOMAIN):
+        entry = e
+        break
+
+    if entry is None:
+        connection.send_error(
+            msg["id"], "not_found", "Battery Guard config entry not found"
+        )
+        return
+
+    connection.send_result(
+        msg["id"],
+        {
+            "data": dict(entry.data),
+            "options": dict(entry.options),
+            "version": VERSION,
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "battery_guard/import_config",
+        vol.Required("config"): dict,
+    }
+)
+@websocket_api.async_response
+async def ws_import_config(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Import Battery Guard configuration from JSON."""
+    imported = msg["config"]
+
+    entry: ConfigEntry | None = None
+    for e in hass.config_entries.async_entries(DOMAIN):
+        entry = e
+        break
+
+    if entry is None:
+        connection.send_error(
+            msg["id"], "not_found", "Battery Guard config entry not found"
+        )
+        return
+
+    # Validate structure
+    if "data" not in imported or not isinstance(imported["data"], dict):
+        connection.send_error(
+            msg["id"], "validation_error", "Invalid config: missing 'data' dict"
+        )
+        return
+
+    # Merge imported data into entry (preserve entry-specific fields)
+    new_data = {**entry.data, **imported["data"]}
+    hass.config_entries.async_update_entry(entry, data=new_data)
+
+    # Merge options if present
+    if "options" in imported and isinstance(imported["options"], dict):
+        new_options = {**entry.options, **imported["options"]}
+        hass.config_entries.async_update_entry(entry, options=new_options)
+
+    # Auto-backup the imported config
+    backup = hass.data.get(DOMAIN, {}).get("config_backup")
+    if backup:
+        await backup.save(entry)
+
+    await hass.config_entries.async_reload(entry.entry_id)
+
+    _LOGGER.info("Imported Battery Guard configuration")
     connection.send_result(msg["id"], {"success": True})

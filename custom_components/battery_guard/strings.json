@@ -15,6 +15,16 @@
           "critical_soc": "Below this level, a critical alert is sent. Only tier 3 devices (e.g. router, security) remain active."
         }
       },
+      "restore": {
+        "title": "Restore Configuration",
+        "description": "A previous Battery Guard configuration was found (backed up {backup_time}). Would you like to restore it?",
+        "data": {
+          "restore": "Restore previous configuration"
+        },
+        "data_description": {
+          "restore": "Enable to restore all previous settings (thresholds, sensors, device actions, notifications). Disable to start fresh."
+        }
+      },
       "notifications": {
         "title": "Notification Services",
         "description": "Select which notification services should receive Battery Guard alerts. Persistent notifications are always enabled. You can change this later.",
