@@ -9,6 +9,7 @@ import { SummaryStep } from './steps/SummaryStep'
 import { DashboardView } from './steps/DashboardView'
 import { SystemSettingsView } from './steps/SystemSettingsView'
 import { ConfigurationView } from './steps/ConfigurationView'
+import { BatteryView } from './steps/BatteryView'
 import { connectFromPanel, isInsidePanel, listEntities } from './services/ha-websocket'
 import { BATTERY_GUARD_LABEL_IDS } from './lib/constants'
 
@@ -26,7 +27,8 @@ async function hasExistingConfig(): Promise<boolean> {
 
 function WizardRouter() {
   const { currentStep, dispatch, setCurrentStep } = useWizard()
-  const [panelConnecting, setPanelConnecting] = useState(isInsidePanel)
+  // Start as initializing only when inside HA panel (need to auto-connect)
+  const [initializing, setInitializing] = useState(isInsidePanel)
 
   // Auto-connect when embedded in HA panel
   useEffect(() => {
@@ -51,7 +53,9 @@ function WizardRouter() {
         if (cancelled) return
         console.error('Panel auto-connect failed:', err)
         // Fallback to manual connection step
-        setPanelConnecting(false)
+      })
+      .finally(() => {
+        if (!cancelled) setInitializing(false)
       })
 
     return () => {
@@ -59,13 +63,13 @@ function WizardRouter() {
     }
   }, [dispatch, setCurrentStep])
 
-  // Show loading spinner while panel auto-connects
-  if (panelConnecting && currentStep === 'connection') {
+  // Show loading spinner until initialization is complete
+  if (initializing) {
     return (
       <div className="flex items-center justify-center py-24">
         <div className="text-center">
           <div className="inline-block w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-          <p className="text-gray-500">Connecting to Home Assistant...</p>
+          <p className="text-gray-500">Checking connection...</p>
         </div>
       </div>
     )
@@ -85,6 +89,8 @@ function WizardRouter() {
       return <DashboardView />
     case 'settings':
       return <SystemSettingsView />
+    case 'battery':
+      return <BatteryView />
     case 'configuration':
       return <ConfigurationView />
     default:

@@ -34,6 +34,18 @@ jobs:
       - run: ruff check custom_components/battery_guard/
       - run: ruff format --check custom_components/battery_guard/
 
+  test-python:
+    name: Test Python
+    runs-on: ubuntu-latest
+    needs: lint-python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest pytest-asyncio
+      - run: pytest tests/ -v
+
   # ==========================================================================
   # Wizard Frontend
   # ==========================================================================

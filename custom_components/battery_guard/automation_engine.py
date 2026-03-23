@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -25,8 +26,10 @@ from homeassistant.helpers.event import (
 )
 
 from .const import (
+    CONF_BATTERY_OPTIMIZATION,
     CONF_CRITICAL_SOC,
     CONF_SOC_SENSOR,
+    DEFAULT_BATTERY_OPTIMIZATION,
     DEFAULT_CRITICAL_SOC,
     DOMAIN,
     LABEL_TIER1,
@@ -54,6 +57,7 @@ class BatteryGuardAutomationEngine:
         )
         self._outage_debounce_handle: CALLBACK_TYPE | None = None
         self._restore_debounce_handle: CALLBACK_TYPE | None = None
+        self._outage_start_time: float | None = None
         self._operation_lock = asyncio.Lock()
 
     async def async_start(self) -> None:
@@ -213,10 +217,59 @@ class BatteryGuardAutomationEngine:
         self._restore_debounce_handle = None
         self.hass.async_create_task(self._on_grid_restored())
 
+    async def _apply_battery_optimization(self, mode: str) -> None:
+        """Apply battery optimization values.
+
+        Args:
+            mode: "outage" to set outage values, "normal" to restore normal values.
+        """
+        config = self.entry.data.get(
+            CONF_BATTERY_OPTIMIZATION, DEFAULT_BATTERY_OPTIMIZATION
+        )
+        if not config.get("enabled", False):
+            return
+
+        entities = config.get("entities", [])
+        for entity_cfg in entities:
+            entity_id = entity_cfg.get("entity_id")
+            if not entity_id:
+                continue
+
+            value = entity_cfg.get(f"{mode}_value")
+            if value is None:
+                continue
+
+            state = self.hass.states.get(entity_id)
+            if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+                _LOGGER.warning(
+                    "Battery optimization: %s unavailable, skipping", entity_id
+                )
+                continue
+
+            try:
+                await self.hass.services.async_call(
+                    "number",
+                    "set_value",
+                    {"value": float(value)},
+                    target={"entity_id": entity_id},
+                    blocking=True,
+                )
+                _LOGGER.info(
+                    "Battery optimization: set %s to %s (%s mode)",
+                    entity_id,
+                    value,
+                    mode,
+                )
+            except Exception:
+                _LOGGER.exception(
+                    "Battery optimization: failed to set %s", entity_id
+                )
+
     async def _on_power_outage(self) -> None:
         """Handle power outage: activate emergency mode, tier 1 off, notify."""
         async with self._operation_lock:
             _LOGGER.warning("Power outage detected — activating Battery Guard")
+            self._outage_start_time = time.monotonic()
 
             # Set active switch
             active_entity = self._find_entity("active")
@@ -224,6 +277,9 @@ class BatteryGuardAutomationEngine:
                 await self.hass.services.async_call(
                     "switch", "turn_on", {}, target={"entity_id": active_entity}
                 )
+
+            # Apply battery optimization (outage values)
+            await self._apply_battery_optimization("outage")
 
             # Turn off tier 1
             await self.hass.services.async_call(
@@ -235,26 +291,18 @@ class BatteryGuardAutomationEngine:
             failed = result.get("failed", [])
             total = result.get("total", 0)
 
-            # Get current SOC for notification
             soc = self._get_soc_value()
             soc_text = f"Battery: {soc:.0f}%" if soc is not None else ""
 
-            message = (
-                f"Power outage detected! Tier 1 devices shut down "
-                f"({total - len(failed)}/{total} successful). {soc_text}"
-            )
-            if failed:
-                message += (
-                    f"\n\n⚠️ {len(failed)} device(s) failed to respond:\n"
-                    + "\n".join(f"- {eid}" for eid in failed)
-                )
+            status = self._format_action_result(total, failed)
+            message = f"Tier 1: {status}\n{soc_text}"
 
             await self.hass.services.async_call(
                 DOMAIN,
                 "notify",
                 {
                     "title": "⚡ Power Outage Detected",
-                    "message": message,
+                    "message": message.strip(),
                     "critical": True,
                 },
                 blocking=True,
@@ -273,6 +321,9 @@ class BatteryGuardAutomationEngine:
                 DOMAIN, "restore_all", {}, blocking=True
             )
 
+            # Restore battery optimization (normal values)
+            await self._apply_battery_optimization("normal")
+
             # Check for failures from restore
             result = self.hass.data.get(DOMAIN, {}).get("last_action_result", {})
             failed = result.get("failed", [])
@@ -280,12 +331,18 @@ class BatteryGuardAutomationEngine:
             soc = self._get_soc_value()
             soc_text = f"Battery: {soc:.0f}%" if soc is not None else ""
 
-            message = f"Grid power is back! Devices have been restored. {soc_text}"
-            if failed:
-                message += (
-                    f"\n\n⚠️ {len(failed)} device(s) failed to restore:\n"
-                    + "\n".join(f"- {eid}" for eid in failed)
-                )
+            # Calculate outage duration
+            duration_text = ""
+            if self._outage_start_time is not None:
+                elapsed = time.monotonic() - self._outage_start_time
+                duration_text = f"Outage duration: {self._format_duration(elapsed)}"
+                self._outage_start_time = None
+
+            status = self._format_action_result(
+                result.get("total", 0), failed
+            )
+            parts = [status, soc_text, duration_text]
+            message = "\n".join(p for p in parts if p)
 
             await self.hass.services.async_call(
                 DOMAIN,
@@ -382,16 +439,8 @@ class BatteryGuardAutomationEngine:
                     target={"entity_id": tier2_disabled_entity},
                 )
 
-            message = (
-                f"Battery below {threshold:.0f}%. "
-                f"Tier 2 devices shut down ({total - len(failed)}/{total} successful). "
-                f"Current SOC: {current_soc:.0f}%"
-            )
-            if failed:
-                message += (
-                    f"\n\n⚠️ {len(failed)} device(s) failed to respond:\n"
-                    + "\n".join(f"- {eid}" for eid in failed)
-                )
+            status = self._format_action_result(total, failed)
+            message = f"Tier 2: {status}\nBattery: {current_soc:.0f}%"
 
             await self.hass.services.async_call(
                 DOMAIN,
@@ -432,16 +481,9 @@ class BatteryGuardAutomationEngine:
                     target={"entity_id": tier2_disabled_entity},
                 )
 
-            message = (
-                f"Battery above {threshold:.0f}%. "
-                "Tier 2 devices have been restored. "
-                f"Current SOC: {current_soc:.0f}%"
-            )
-            if failed:
-                message += (
-                    f"\n\n⚠️ {len(failed)} device(s) failed to restore:\n"
-                    + "\n".join(f"- {eid}" for eid in failed)
-                )
+            total = result.get("total", 0)
+            status = self._format_action_result(total, failed)
+            message = f"Tier 2: {status}\nBattery: {current_soc:.0f}%"
 
             await self.hass.services.async_call(
                 DOMAIN,
@@ -469,11 +511,10 @@ class BatteryGuardAutomationEngine:
             DOMAIN,
             "notify",
             {
-                "title": "🚨 CRITICAL: Battery Below 10%!",
+                "title": f"🚨 CRITICAL: Battery at {current_soc:.0f}%!",
                 "message": (
-                    f"WARNING: Battery at only {current_soc:.0f}%! "
-                    "Only critical devices (tier 3) are still active. "
-                    "Please minimize all non-essential consumption!"
+                    "Only Tier 3 devices still active.\n"
+                    "Minimize all non-essential consumption!"
                 ),
                 "critical": True,
             },
@@ -551,3 +592,31 @@ class BatteryGuardAutomationEngine:
             return float(state.state)
         except (ValueError, TypeError):
             return None
+
+    def _friendly_name(self, entity_id: str) -> str:
+        """Get friendly name for an entity, falling back to entity_id."""
+        state = self.hass.states.get(entity_id)
+        if state and state.attributes.get("friendly_name"):
+            return state.attributes["friendly_name"]
+        return entity_id
+
+    def _format_action_result(self, total: int, failed: list[str]) -> str:
+        """Format action result as ✅/⚠️ status line."""
+        if not failed:
+            return f"✅ All {total} actions executed successfully"
+        lines = [f"⚠️ {total - len(failed)}/{total} actions executed"]
+        for eid in failed:
+            lines.append(f"  - {self._friendly_name(eid)}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        """Format seconds into human-readable duration."""
+        minutes = int(seconds / 60)
+        if minutes < 60:
+            return f"{minutes} min"
+        hours = minutes // 60
+        remaining = minutes % 60
+        if remaining == 0:
+            return f"{hours}h"
+        return f"{hours}h {remaining}min"

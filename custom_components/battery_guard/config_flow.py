@@ -39,7 +39,7 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
     so the integration can be installed before Modbus is set up.
     """
 
-    VERSION = 4
+    VERSION = 5
 
     def __init__(self) -> None:
         """Initialize the config flow."""

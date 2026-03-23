@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "2.19.1"
+VERSION = "2.20.0-rc.1"
 
 # Platforms
 PLATFORMS = [
@@ -88,6 +88,7 @@ CONF_BATTERY_MAX_SOC = "battery_max_soc"
 CONF_BATTERY_MIN_SOC = "battery_min_soc"
 CONF_DEVICE_ACTIONS = "device_actions"
 CONF_RESTORE_CONFIG = "restore_config"
+CONF_BATTERY_OPTIMIZATION = "battery_optimization"
 
 # Restore defaults
 DEFAULT_RESTORE_CONFIG: dict[str, Any] = {
@@ -99,6 +100,13 @@ DEFAULT_RESTORE_CONFIG: dict[str, Any] = {
     },
     "stay_off": [],
     "device_delays": {},
+}
+
+# Battery optimization defaults
+DEFAULT_BATTERY_OPTIMIZATION: dict[str, Any] = {
+    "enabled": False,
+    "entities": [],
+    # Entity structure: {"entity_id": "number.x", "normal_value": 90, "outage_value": 100}
 }
 
 # Map tier keys to label constants

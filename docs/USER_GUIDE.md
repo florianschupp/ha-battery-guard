@@ -37,9 +37,28 @@ When grid power is restored, all devices are automatically restored to their pre
 After setup, configure your actual sensors:
 
 1. Go to **Settings → Devices & Services → Battery Guard → Configure**
-2. Select your **SOC sensor** (battery state of charge, e.g., from Huawei Modbus)
-3. Select your **Grid sensor** (power outage detection, binary sensor)
+2. Select your **SOC sensor** (battery state of charge)
+3. Select your **Grid sensor** (power outage detection)
 4. Optionally enable voltage monitoring with Shelly 3EM phase sensors
+
+#### Huawei Solar (SUN2000 + LUNA2000 + BackupBox) Sensor Mapping
+
+If you use the [Huawei Solar](https://github.com/wlcrs/huawei_solar) HACS integration, use these sensors:
+
+| Battery Guard Setting | Huawei Solar Entity | Device | Example Value |
+|----------------------|---------------------|--------|---------------|
+| **SOC Sensor** | `sensor.batteries_state_of_capacity` | Batterien | 90.0 % |
+| **Grid Sensor** | `sensor.wechselrichter_netzunabhangigkeitsstatus` | Wechselrichter (SUN2000) | On-grid / Off-grid |
+
+> **Note:** Entity IDs may vary depending on your Huawei Solar integration version and language settings. Check your Wechselrichter device page under **Diagnose** for the correct entity.
+
+**Grid sensor values:**
+- `On-grid` — Normal operation, grid power available
+- `Off-grid` — Power outage detected → Battery Guard activates
+
+**Alternative grid detection:** The Wechselrichter also exposes a `Gerätestatus` sensor with the same On-grid/Off-grid values. Both work with Battery Guard.
+
+**Voltage-based detection (optional):** If you have a Shelly 3EM at your main panel, you can enable voltage monitoring as a secondary detection method. Battery Guard then monitors all 3 phases and triggers when all drop below 50V.
 
 ### 4. Assign Devices (Wizard)
 

@@ -8,6 +8,7 @@ export type WizardStep =
   | 'summary'
   | 'dashboard'
   | 'settings'
+  | 'battery'
   | 'configuration'
 
 export const WIZARD_STEPS: WizardStep[] = [
@@ -26,6 +27,7 @@ export const STEP_LABELS: Record<WizardStep, string> = {
   summary: 'Deploy',
   dashboard: 'Overview',
   settings: 'Outage',
+  battery: 'Battery',
   configuration: 'Configuration',
 }
 
@@ -106,6 +108,19 @@ export interface WizardConfig {
 
   /** Entity to focus/highlight after navigating from dashboard */
   focusedEntityId?: string
+}
+
+/** Battery optimization entity configuration */
+export interface BatteryOptEntity {
+  entity_id: string
+  normal_value: number
+  outage_value: number
+}
+
+/** Battery charging optimization configuration */
+export interface BatteryOptimizationConfig {
+  enabled: boolean
+  entities: BatteryOptEntity[]
 }
 
 export type WizardAction =

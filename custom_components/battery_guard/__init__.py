@@ -10,10 +10,12 @@ from homeassistant.core import HomeAssistant
 from .const import (
     CONF_BATTERY_MAX_SOC,
     CONF_BATTERY_MIN_SOC,
+    CONF_BATTERY_OPTIMIZATION,
     CONF_DEVICE_ACTIONS,
     CONF_RESTORE_CONFIG,
     DEFAULT_BATTERY_MAX_SOC,
     DEFAULT_BATTERY_MIN_SOC,
+    DEFAULT_BATTERY_OPTIMIZATION,
     DEFAULT_RESTORE_CONFIG,
     DOMAIN,
     PLATFORMS,
@@ -22,7 +24,7 @@ from .state_store import StateStore
 
 _LOGGER = logging.getLogger(__name__)
 
-type BatteryGuardConfigEntry = ConfigEntry
+BatteryGuardConfigEntry = ConfigEntry
 
 
 async def async_migrate_entry(
@@ -33,6 +35,7 @@ async def async_migrate_entry(
     v1 → v2: Initialize device_actions in options.
     v2 → v3: Initialize restore_config in options.
     v3 → v4: Initialize battery SOC limits in entry data.
+    v4 → v5: Initialize battery optimization config in entry data.
     """
     _LOGGER.info(
         "Migrating Battery Guard config entry from version %s",
@@ -75,6 +78,18 @@ async def async_migrate_entry(
             config_entry, data=new_data, version=4
         )
         _LOGGER.info("Migration to version 4 complete")
+
+    if config_entry.version < 5:
+        new_data = {
+            **config_entry.data,
+            CONF_BATTERY_OPTIMIZATION: config_entry.data.get(
+                CONF_BATTERY_OPTIMIZATION, DEFAULT_BATTERY_OPTIMIZATION
+            ),
+        }
+        hass.config_entries.async_update_entry(
+            config_entry, data=new_data, version=5
+        )
+        _LOGGER.info("Migration to version 5 complete")
 
     return True
 
