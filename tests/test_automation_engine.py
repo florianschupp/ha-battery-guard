@@ -59,7 +59,7 @@ class TestFormatActionResult:
         engine = _make_engine(mock_hass, mock_entry)
         result = engine._format_action_result(6, [])
         assert "✅" in result
-        assert "6" in result
+        assert "6 devices" in result
 
     def test_with_failures(self, mock_hass, mock_entry):
         engine = _make_engine(mock_hass, mock_entry)
@@ -70,6 +70,21 @@ class TestFormatActionResult:
         assert "⚠️" in result
         assert "5/6" in result
         assert "Heater" in result
+
+    def test_with_action_counts(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        counts = {"off": 3, "HVAC → fan_only": 1, "dim → 25%": 1}
+        result = engine._format_action_result(5, [], counts)
+        assert "✅" in result
+        assert "3× off" in result
+        assert "HVAC → fan_only" in result
+        assert "dim → 25%" in result
+
+    def test_without_action_counts(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        result = engine._format_action_result(3, [])
+        assert "✅ 3 devices" in result
+        assert "(" not in result
 
 
 class TestFriendlyName:

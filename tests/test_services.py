@@ -11,6 +11,41 @@ from custom_components.battery_guard.const import DOMAIN, MAX_RETRIES
 
 
 # =========================================================================
+# Action Label Formatting
+# =========================================================================
+
+
+class TestFormatActionLabel:
+    def test_turn_off(self):
+        from custom_components.battery_guard.services import _format_action_label
+
+        assert _format_action_label({"action": "turn_off"}) == "off"
+
+    def test_set_hvac_mode(self):
+        from custom_components.battery_guard.services import _format_action_label
+
+        result = _format_action_label({"action": "set_hvac_mode", "hvac_mode": "fan_only"})
+        assert result == "HVAC → fan_only"
+
+    def test_dim(self):
+        from custom_components.battery_guard.services import _format_action_label
+
+        result = _format_action_label({"action": "dim", "brightness": 25})
+        assert result == "dim → 25%"
+
+    def test_set_temperature(self):
+        from custom_components.battery_guard.services import _format_action_label
+
+        result = _format_action_label({"action": "set_temperature", "temperature": 18})
+        assert result == "temp → 18°"
+
+    def test_default(self):
+        from custom_components.battery_guard.services import _format_action_label
+
+        assert _format_action_label({}) == "off"
+
+
+# =========================================================================
 # Action Config Lookup
 # =========================================================================
 

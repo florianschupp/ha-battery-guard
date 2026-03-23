@@ -290,11 +290,12 @@ class BatteryGuardAutomationEngine:
             result = self.hass.data.get(DOMAIN, {}).get("last_action_result", {})
             failed = result.get("failed", [])
             total = result.get("total", 0)
+            action_counts = result.get("action_counts", {})
 
             soc = self._get_soc_value()
             soc_text = f"Battery: {soc:.0f}%" if soc is not None else ""
 
-            status = self._format_action_result(total, failed)
+            status = self._format_action_result(total, failed, action_counts)
             message = f"Tier 1: {status}\n{soc_text}"
 
             await self.hass.services.async_call(
@@ -338,8 +339,9 @@ class BatteryGuardAutomationEngine:
                 duration_text = f"Outage duration: {self._format_duration(elapsed)}"
                 self._outage_start_time = None
 
+            action_counts = result.get("action_counts", {})
             status = self._format_action_result(
-                result.get("total", 0), failed
+                result.get("total", 0), failed, action_counts
             )
             parts = [status, soc_text, duration_text]
             message = "\n".join(p for p in parts if p)
@@ -428,6 +430,7 @@ class BatteryGuardAutomationEngine:
             result = self.hass.data.get(DOMAIN, {}).get("last_action_result", {})
             failed = result.get("failed", [])
             total = result.get("total", 0)
+            action_counts = result.get("action_counts", {})
 
             # Set tier2_disabled flag
             tier2_disabled_entity = self._find_entity("tier2_disabled")
@@ -439,7 +442,7 @@ class BatteryGuardAutomationEngine:
                     target={"entity_id": tier2_disabled_entity},
                 )
 
-            status = self._format_action_result(total, failed)
+            status = self._format_action_result(total, failed, action_counts)
             message = f"Tier 2: {status}\nBattery: {current_soc:.0f}%"
 
             await self.hass.services.async_call(
@@ -482,7 +485,8 @@ class BatteryGuardAutomationEngine:
                 )
 
             total = result.get("total", 0)
-            status = self._format_action_result(total, failed)
+            action_counts = result.get("action_counts", {})
+            status = self._format_action_result(total, failed, action_counts)
             message = f"Tier 2: {status}\nBattery: {current_soc:.0f}%"
 
             await self.hass.services.async_call(
@@ -600,13 +604,31 @@ class BatteryGuardAutomationEngine:
             return state.attributes["friendly_name"]
         return entity_id
 
-    def _format_action_result(self, total: int, failed: list[str]) -> str:
-        """Format action result as ✅/⚠️ status line."""
+    def _format_action_result(
+        self,
+        total: int,
+        failed: list[str],
+        action_counts: dict[str, int] | None = None,
+    ) -> str:
+        """Format action result as ✅/⚠️ status line with action breakdown.
+
+        Examples:
+            "✅ 6 devices (4× off, 1× HVAC → fan_only, 1× dim → 25%)"
+            "⚠️ 5/6 devices (4× off, 1× HVAC → fan_only)\n  Failed: Heater"
+        """
+        success_count = total - len(failed)
+
+        # Action type breakdown
+        breakdown = ""
+        if action_counts:
+            parts = [f"{count}× {label}" for label, count in action_counts.items()]
+            breakdown = f" ({', '.join(parts)})"
+
         if not failed:
-            return f"✅ All {total} actions executed successfully"
-        lines = [f"⚠️ {total - len(failed)}/{total} actions executed"]
+            return f"✅ {total} devices{breakdown}"
+        lines = [f"⚠️ {success_count}/{total} devices{breakdown}"]
         for eid in failed:
-            lines.append(f"  - {self._friendly_name(eid)}")
+            lines.append(f"  Failed: {self._friendly_name(eid)}")
         return "\n".join(lines)
 
     @staticmethod

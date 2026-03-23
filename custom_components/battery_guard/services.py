@@ -84,6 +84,30 @@ def _get_action_config(
     return {"action": "turn_off"}
 
 
+def _format_action_label(action_config: dict[str, Any]) -> str:
+    """Format an action config into a human-readable label for notifications.
+
+    Examples:
+        {"action": "turn_off"} → "off"
+        {"action": "set_hvac_mode", "hvac_mode": "fan_only"} → "HVAC → fan_only"
+        {"action": "set_temperature", "temperature": 18} → "temp → 18°"
+        {"action": "dim", "brightness": 25} → "dim → 25%"
+    """
+    action = action_config.get("action", "turn_off")
+
+    if action == "turn_off":
+        return "off"
+    if action == "turn_on":
+        return "on"
+    if action == "set_hvac_mode":
+        return f"HVAC → {action_config.get('hvac_mode', '?')}"
+    if action == "set_temperature":
+        return f"temp → {action_config.get('temperature', '?')}°"
+    if action == "dim":
+        return f"dim → {action_config.get('brightness', '?')}%"
+    return action
+
+
 async def _retry_action(
     coro_factory: Any,
     entity_id: str,
@@ -153,6 +177,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         device_actions = _get_device_actions(entry)
         state_store = _get_state_store(hass)
         failed_entities: list[str] = []
+        action_counts: dict[str, int] = {}
 
         _LOGGER.info(
             "Executing tier %s actions for %d entities", tier, len(entity_ids)
@@ -167,7 +192,11 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             action_config = _get_action_config(device_actions, entity_id, tier_key)
             action_name = action_config.get("action", "turn_off")
 
-            # 3. Execute with retry
+            # 3. Track action type for notification breakdown
+            label = _format_action_label(action_config)
+            action_counts[label] = action_counts.get(label, 0) + 1
+
+            # 4. Execute with retry
             success = await _retry_action(
                 lambda eid=entity_id, ac=action_config: execute_action(
                     hass, eid, ac
@@ -186,6 +215,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             "action": "tier_off",
             "total": len(entity_ids),
             "failed": failed_entities,
+            "action_counts": action_counts,
         }
 
     async def handle_tier_on(call: ServiceCall) -> None:
