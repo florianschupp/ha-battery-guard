@@ -23,7 +23,8 @@ Target audience: end users and developers.
 | Grid drops | Battery Guard detects via grid sensor or voltage monitoring |
 | 5 second debounce | No action yet — prevents false triggers on grid flicker |
 | Debounce expires | Emergency mode ON, Tier 1 device states saved, Tier 1 actions executed |
-| Notification | Critical push: "Power outage! Tier 1 devices shut down (X/Y successful)" |
+| Battery optimization | If enabled: charge limit raised (e.g., 90%→100%), discharge limit lowered (e.g., 20%→10%) |
+| Notification | Critical push: "Tier 1: ✅ 6 devices (4× off, 1× HVAC → fan_only, 1× dim → 25%)\nBattery: 90%" |
 
 **Devices affected:** All Tier 1 devices (high-consumption: EV charger, dryer, oven, etc.)
 
@@ -88,8 +89,9 @@ Target audience: end users and developers.
 | Tier 3 restored | Immediately (delay: 0s, device gap: 2s) |
 | Tier 2 restored | After 30s tier delay (device gap: 5s) |
 | Tier 1 restored | After 60s tier delay (device gap: 10s) |
+| Battery optimization | If enabled: daily values restored (e.g., 100%→90% charge, 10%→20% discharge) |
 | Cleanup | Emergency mode OFF, saved states cleared |
-| Notification | "Grid power restored! All devices restored." |
+| Notification | "✅ Grid Power Restored\n✅ 9 devices\nBattery: 45%\nOutage duration: 2h 15min" |
 
 **Why staged?** Prevents power spike from all devices turning on simultaneously.
 **Stay-off list:** Devices configured as "stay off" are never restored.

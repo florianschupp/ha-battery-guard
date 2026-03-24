@@ -108,6 +108,54 @@ Battery Guard automatically saves each device's state before taking any action. 
 
 The first save wins: if a device is in both T1 and T2, the state saved during T1 is preserved.
 
+## Battery Optimization
+
+Battery Guard can automatically adjust your battery's charging and discharging limits during a power outage to maximize available capacity.
+
+### Why?
+
+In normal operation, you might limit charging to 90% to extend battery longevity and keep a 20% discharge reserve. During an outage, you want to use the full battery capacity: charge to 100% (capture all solar energy) and discharge down to 10% (more usable power).
+
+### Setup
+
+1. **Bind entities:** Go to Settings → Integrations → Battery Guard → Configure. In the "Battery Entities" step, select:
+   - **Charging cutoff SOC** — the entity that controls maximum charge level (e.g., "Ladeende-Ladestand")
+   - **Discharge cutoff SOC** — the entity that controls minimum discharge level (e.g., "Entlade-Ende-Ladestand")
+2. **Configure values:** Open the Battery Guard panel → Battery tab. Set daily and outage values for each entity.
+3. **Accept disclaimer:** A safety disclaimer must be accepted before Battery Guard will write values to your battery system.
+
+### Behavior
+
+| Event | Action |
+|-------|--------|
+| Power outage detected | Charge limit raised (e.g., 90% → 100%), discharge limit lowered (e.g., 20% → 10%) |
+| Grid power restored | Daily values restored (e.g., 100% → 90%, 10% → 20%) |
+| Entity unavailable | Skipped with warning in logs, no crash |
+
+### Safety
+
+- Battery Guard requires explicit opt-in via a disclaimer before writing values
+- Entity validation checks unit (must be %) and value range on configuration
+- Incorrect entities (e.g., power entities in Watts instead of SOC in %) are flagged with warnings
+- The disclaimer can be revoked at any time, which also disables the feature
+
+### Requirements
+
+- Huawei Solar integration with "Elevate permissions" enabled
+- Battery entities must be `number.*` domain entities
+
+## Backup & Restore
+
+Battery Guard automatically backs up your configuration after every change. If you reinstall the integration, you will be offered to restore the previous configuration.
+
+### Manual Export/Import
+
+In the Battery Guard panel → Configuration tab:
+- **Download Configuration** — saves all settings (thresholds, sensors, device actions, restore config, battery optimization) as a JSON file
+- **Upload Configuration** — restores settings from a previously downloaded file
+
+Use cases: backup before updates, clone configuration to family installations.
+
 ## Entities Created
 
 Battery Guard creates several entities for monitoring and control:

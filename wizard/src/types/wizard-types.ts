@@ -120,6 +120,8 @@ export interface BatteryOptEntity {
 /** Battery charging optimization configuration */
 export interface BatteryOptimizationConfig {
   enabled: boolean
+  disclaimer_accepted: boolean
+  disclaimer_accepted_at?: string
   entities: BatteryOptEntity[]
 }
 

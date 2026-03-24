@@ -15,6 +15,16 @@
           "critical_soc": "Below this level, a critical alert is sent. Only tier 3 devices (e.g. router, security) remain active."
         }
       },
+      "restore": {
+        "title": "Restore Configuration",
+        "description": "A previous Battery Guard configuration was found (backed up {backup_time}). Would you like to restore it?",
+        "data": {
+          "restore": "Restore previous configuration"
+        },
+        "data_description": {
+          "restore": "Enable to restore all previous settings (thresholds, sensors, device actions, notifications). Disable to start fresh."
+        }
+      },
       "notifications": {
         "title": "Notification Services",
         "description": "Select which notification services should receive Battery Guard alerts. Persistent notifications are always enabled. You can change this later.",
@@ -44,6 +54,18 @@
           "soc_sensor": "Entity that reports your battery's state of charge in percent. Accepts sensors (e.g. Modbus) or input_number helpers for testing.",
           "grid_sensor": "Entity that indicates whether grid power is available. Accepts sensors, binary sensors, or input_boolean helpers for testing.",
           "use_voltage": "Enable this if you use a Shelly 3EM for grid detection via per-phase voltage monitoring instead of a grid status sensor."
+        }
+      },
+      "battery": {
+        "title": "Battery Entities (Optional)",
+        "description": "Select the number entities that control your battery's charging and discharging limits. Battery Guard will write to these entities during outages to maximize capacity. Leave empty if not available.",
+        "data": {
+          "battery_charge_entity": "Charging cutoff SOC",
+          "battery_discharge_entity": "Discharge cutoff SOC"
+        },
+        "data_description": {
+          "battery_charge_entity": "Controls the maximum charge level (e.g. Ladeende-Ladestand). Search for 'Ladeende' or 'charge'. Battery Guard sets this to your outage value during power failures.",
+          "battery_discharge_entity": "Controls the minimum discharge level (e.g. Entlade-Ende-Ladestand). Search for 'Entlade' or 'discharge'. Battery Guard lowers this during outages for more usable capacity."
         }
       },
       "voltage": {
