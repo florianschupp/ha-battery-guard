@@ -9,6 +9,8 @@ interface ConfigData {
   voltage_phase_b: string
   voltage_phase_c: string
   notify_services: string[]
+  battery_charge_entity: string
+  battery_discharge_entity: string
 }
 
 const DEFAULT_CONFIG_DATA: ConfigData = {
@@ -19,6 +21,8 @@ const DEFAULT_CONFIG_DATA: ConfigData = {
   voltage_phase_b: '',
   voltage_phase_c: '',
   notify_services: [],
+  battery_charge_entity: '',
+  battery_discharge_entity: '',
 }
 
 export function ConfigurationView() {
@@ -80,6 +84,24 @@ export function ConfigurationView() {
           )}
         </div>
       </div>
+
+      {/* Battery Entities — read-only */}
+      {(config.battery_charge_entity || config.battery_discharge_entity) && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
+            <h3 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 10.5h.375c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125H21M3.75 18h15A2.25 2.25 0 0021 15.75v-6a2.25 2.25 0 00-2.25-2.25h-15A2.25 2.25 0 001.5 9.75v6A2.25 2.25 0 003.75 18z" />
+              </svg>
+              Battery Entities
+            </h3>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <SensorRow label="Charging cutoff SOC" value={config.battery_charge_entity} />
+            <SensorRow label="Discharge cutoff SOC" value={config.battery_discharge_entity} />
+          </div>
+        </div>
+      )}
 
       {/* Notifications — read-only list */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
