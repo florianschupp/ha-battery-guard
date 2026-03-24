@@ -12,6 +12,8 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CRITICAL_SOC,
     CONF_GRID_SENSOR,
     CONF_NOTIFY_SERVICES,
@@ -215,7 +217,7 @@ class BatteryGuardOptionsFlow(OptionsFlow):
             self._data[CONF_USE_VOLTAGE] = user_input.get(CONF_USE_VOLTAGE, False)
             if self._data[CONF_USE_VOLTAGE]:
                 return await self.async_step_voltage()
-            return await self.async_step_thresholds()
+            return await self.async_step_battery()
 
         current = self.config_entry.data
 
@@ -259,7 +261,7 @@ class BatteryGuardOptionsFlow(OptionsFlow):
             self._data[CONF_VOLTAGE_PHASE_A] = user_input[CONF_VOLTAGE_PHASE_A]
             self._data[CONF_VOLTAGE_PHASE_B] = user_input[CONF_VOLTAGE_PHASE_B]
             self._data[CONF_VOLTAGE_PHASE_C] = user_input[CONF_VOLTAGE_PHASE_C]
-            return await self.async_step_thresholds()
+            return await self.async_step_battery()
 
         current = self.config_entry.data
 
@@ -289,10 +291,53 @@ class BatteryGuardOptionsFlow(OptionsFlow):
             ),
         )
 
+    async def async_step_battery(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Step 2: Battery entity bindings (optional)."""
+        if user_input is not None:
+            self._data[CONF_BATTERY_CHARGE_ENTITY] = user_input.get(
+                CONF_BATTERY_CHARGE_ENTITY, ""
+            )
+            self._data[CONF_BATTERY_DISCHARGE_ENTITY] = user_input.get(
+                CONF_BATTERY_DISCHARGE_ENTITY, ""
+            )
+            return await self.async_step_thresholds()
+
+        current = self.config_entry.data
+
+        return self.async_show_form(
+            step_id="battery",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_BATTERY_CHARGE_ENTITY,
+                        description={
+                            "suggested_value": current.get(
+                                CONF_BATTERY_CHARGE_ENTITY, ""
+                            )
+                        },
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="number")
+                    ),
+                    vol.Optional(
+                        CONF_BATTERY_DISCHARGE_ENTITY,
+                        description={
+                            "suggested_value": current.get(
+                                CONF_BATTERY_DISCHARGE_ENTITY, ""
+                            )
+                        },
+                    ): selector.EntitySelector(
+                        selector.EntitySelectorConfig(domain="number")
+                    ),
+                }
+            ),
+        )
+
     async def async_step_thresholds(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Step 2: Thresholds + notifications."""
+        """Step 3: Thresholds + notifications."""
         errors: dict[str, str] = {}
         if user_input is not None:
             recovery = user_input.get(

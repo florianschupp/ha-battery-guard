@@ -56,6 +56,18 @@
           "use_voltage": "Enable this if you use a Shelly 3EM for grid detection via per-phase voltage monitoring instead of a grid status sensor."
         }
       },
+      "battery": {
+        "title": "Battery Entities (Optional)",
+        "description": "Select the number entities that control your battery's charging and discharging limits. These are used by Battery Optimization to maximize capacity during outages. Leave empty if not available.",
+        "data": {
+          "battery_charge_entity": "Charging cutoff SOC",
+          "battery_discharge_entity": "Discharge cutoff SOC"
+        },
+        "data_description": {
+          "battery_charge_entity": "Controls the maximum charge level (e.g. Ladeende-Ladestand). Battery Guard sets this to 100% during outages to maximize solar charging.",
+          "battery_discharge_entity": "Controls the minimum discharge level (e.g. Entlade-Ende-Ladestand). Battery Guard lowers this during outages to provide more usable capacity."
+        }
+      },
       "voltage": {
         "title": "Voltage Monitoring Sensors",
         "description": "Select the voltage sensors for each phase. A power outage is detected when all three phases drop below 50V.",

@@ -20,6 +20,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_MAX_SOC,
     CONF_BATTERY_MIN_SOC,
     CONF_BATTERY_OPTIMIZATION,
@@ -115,6 +117,8 @@ def ws_get_config(
                 CONF_BATTERY_MIN_SOC, DEFAULT_BATTERY_MIN_SOC
             ),
             CONF_NOTIFY_SERVICES: data.get(CONF_NOTIFY_SERVICES, []),
+            CONF_BATTERY_CHARGE_ENTITY: data.get(CONF_BATTERY_CHARGE_ENTITY, ""),
+            CONF_BATTERY_DISCHARGE_ENTITY: data.get(CONF_BATTERY_DISCHARGE_ENTITY, ""),
             CONF_BATTERY_OPTIMIZATION: data.get(
                 CONF_BATTERY_OPTIMIZATION, DEFAULT_BATTERY_OPTIMIZATION
             ),
