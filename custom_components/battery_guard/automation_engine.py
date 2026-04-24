@@ -249,22 +249,74 @@ class BatteryGuardAutomationEngine:
                 )
                 continue
 
+            value_f = float(value)
+            min_val = state.attributes.get("min")
+            max_val = state.attributes.get("max")
+            if (
+                min_val is not None
+                and max_val is not None
+                and (value_f < min_val or value_f > max_val)
+            ):
+                _LOGGER.warning(
+                    "Battery optimization: skipped %s — %s value %s "
+                    "out of range [%s, %s]",
+                    entity_id,
+                    mode,
+                    value_f,
+                    min_val,
+                    max_val,
+                )
+                await self._notify_out_of_range(
+                    entity_id, mode, value_f, min_val, max_val
+                )
+                continue
+
             try:
                 await self.hass.services.async_call(
                     "number",
                     "set_value",
-                    {"value": float(value)},
+                    {"value": value_f},
                     target={"entity_id": entity_id},
                     blocking=True,
                 )
                 _LOGGER.info(
                     "Battery optimization: set %s to %s (%s mode)",
                     entity_id,
-                    value,
+                    value_f,
                     mode,
                 )
-            except Exception:
-                _LOGGER.exception("Battery optimization: failed to set %s", entity_id)
+            except Exception as err:
+                _LOGGER.warning(
+                    "Battery optimization: failed to set %s — %s",
+                    entity_id,
+                    err,
+                )
+
+    async def _notify_out_of_range(
+        self,
+        entity_id: str,
+        mode: str,
+        value: float,
+        min_val: float,
+        max_val: float,
+    ) -> None:
+        """Create a persistent notification when a configured value is rejected."""
+        mode_label = "Power outage" if mode == "outage" else "Daily operation"
+        message = (
+            f"The {mode_label} value **{value}** for `{entity_id}` is outside "
+            f"the allowed range [{min_val}, {max_val}]. The value was not applied.\n\n"
+            "Open the Battery Guard panel → Battery tab to correct it."
+        )
+        await self.hass.services.async_call(
+            "persistent_notification",
+            "create",
+            {
+                "title": "⚠️ Battery Guard: value out of range",
+                "message": message,
+                "notification_id": f"battery_guard_oor_{entity_id}_{mode}",
+            },
+            blocking=True,
+        )
 
     async def _on_power_outage(self) -> None:
         """Handle power outage: activate emergency mode, tier 1 off, notify."""

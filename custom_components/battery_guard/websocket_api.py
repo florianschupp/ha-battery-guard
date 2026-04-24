@@ -17,6 +17,7 @@ import voluptuous as vol
 
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
@@ -180,13 +181,37 @@ async def ws_set_config(
                     f"Entity {eid} must be a number entity",
                 )
                 return
+            state = hass.states.get(eid)
+            entity_min = None
+            entity_max = None
+            if state is not None and state.state not in (
+                STATE_UNAVAILABLE,
+                STATE_UNKNOWN,
+            ):
+                entity_min = state.attributes.get("min")
+                entity_max = state.attributes.get("max")
+
             for val_key in ("normal_value", "outage_value"):
                 val = entity_cfg.get(val_key)
-                if val is not None and not isinstance(val, (int, float)):
+                if val is None:
+                    continue
+                if not isinstance(val, (int, float)):
                     connection.send_error(
                         msg["id"],
                         "validation_error",
                         f"{val_key} for {eid} must be numeric",
+                    )
+                    return
+                if (
+                    entity_min is not None
+                    and entity_max is not None
+                    and (val < entity_min or val > entity_max)
+                ):
+                    connection.send_error(
+                        msg["id"],
+                        "validation_error",
+                        f"{val_key} for {eid}: {val} is out of range "
+                        f"[{entity_min}, {entity_max}]",
                     )
                     return
 

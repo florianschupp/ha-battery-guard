@@ -39,6 +39,23 @@ const CARDS: CardConfig[] = [
   },
 ]
 
+interface EntityBounds {
+  min: number | undefined
+  max: number | undefined
+  step: number | undefined
+}
+
+/** Read min/max/step from the entity's HA state attributes. */
+function getEntityBounds(entityId: string, states: HAState[]): EntityBounds {
+  const state = states.find((s) => s.entity_id === entityId)
+  if (!state) return { min: undefined, max: undefined, step: undefined }
+  return {
+    min: state.attributes.min as number | undefined,
+    max: state.attributes.max as number | undefined,
+    step: state.attributes.step as number | undefined,
+  }
+}
+
 /** Check if an entity looks like a valid SOC % entity */
 function validateEntity(entityId: string, states: HAState[]): string | null {
   const state = states.find((s) => s.entity_id === entityId)
@@ -358,6 +375,25 @@ export function BatteryView() {
                 const normalVal = opt?.normal_value ?? (cv ? parseFloat(cv) : 0)
                 const outageVal = opt?.outage_value ?? (cv ? parseFloat(cv) : 0)
 
+                const bounds = getEntityBounds(entityId, allStates.current)
+                const outOfRange = (v: number) =>
+                  bounds.min !== undefined &&
+                  bounds.max !== undefined &&
+                  (v < bounds.min || v > bounds.max)
+                const normalOOR = outOfRange(normalVal)
+                const outageOOR = outOfRange(outageVal)
+                const boundsHint =
+                  bounds.min !== undefined && bounds.max !== undefined
+                    ? `Allowed: ${bounds.min}–${bounds.max}%`
+                    : null
+
+                const inputClass = (oor: boolean) =>
+                  `flex-1 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 ${
+                    oor
+                      ? 'border-red-400 focus:ring-red-500 bg-red-50'
+                      : 'border-gray-300 focus:ring-blue-500'
+                  }`
+
                 return (
                   <div
                     key={card.key}
@@ -387,6 +423,9 @@ export function BatteryView() {
                           <input
                             type="number"
                             value={normalVal}
+                            min={bounds.min}
+                            max={bounds.max}
+                            step={bounds.step}
                             onChange={(e) =>
                               setEntityOpt(
                                 entityId,
@@ -394,10 +433,15 @@ export function BatteryView() {
                                 outageVal,
                               )
                             }
-                            className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className={inputClass(normalOOR)}
                           />
                           <span className="text-xs text-gray-400 w-4">%</span>
                         </div>
+                        {normalOOR && (
+                          <p className="text-xs text-red-600 mt-1">
+                            Must be between {bounds.min} and {bounds.max}.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -407,6 +451,9 @@ export function BatteryView() {
                           <input
                             type="number"
                             value={outageVal}
+                            min={bounds.min}
+                            max={bounds.max}
+                            step={bounds.step}
                             onChange={(e) =>
                               setEntityOpt(
                                 entityId,
@@ -414,12 +461,21 @@ export function BatteryView() {
                                 parseFloat(e.target.value) || 0,
                               )
                             }
-                            className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            className={inputClass(outageOOR)}
                           />
                           <span className="text-xs text-gray-400 w-4">%</span>
                         </div>
+                        {outageOOR && (
+                          <p className="text-xs text-red-600 mt-1">
+                            Must be between {bounds.min} and {bounds.max}.
+                          </p>
+                        )}
                       </div>
                     </div>
+
+                    {boundsHint && (
+                      <p className="text-xs text-gray-400">{boundsHint}</p>
+                    )}
                   </div>
                 )
               })}
@@ -458,17 +514,34 @@ export function BatteryView() {
           )}
 
           {/* Save button */}
-          {batteryOpt.enabled && (
-            <div className="flex justify-end">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 transition-colors text-sm font-medium"
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          )}
+          {batteryOpt.enabled && (() => {
+            const hasOOR = batteryOpt.entities.some((e) => {
+              const b = getEntityBounds(e.entity_id, allStates.current)
+              if (b.min === undefined || b.max === undefined) return false
+              const n = e.normal_value
+              const o = e.outage_value
+              return (
+                (n !== undefined && (n < b.min || n > b.max)) ||
+                (o !== undefined && (o < b.min || o > b.max))
+              )
+            })
+            return (
+              <div className="flex items-center justify-end gap-3">
+                {hasOOR && (
+                  <p className="text-xs text-red-600">
+                    Fix out-of-range values before saving.
+                  </p>
+                )}
+                <button
+                  onClick={handleSave}
+                  disabled={saving || hasOOR}
+                  className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            )
+          })()}
         </>
       )}
     </div>
