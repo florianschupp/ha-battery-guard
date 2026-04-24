@@ -37,17 +37,24 @@ class ConfigBackup:
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize config backup."""
+        self._hass = hass
         self._store: Store = Store(hass, BACKUP_STORAGE_VERSION, BACKUP_STORAGE_KEY)
 
     async def save(self, entry: ConfigEntry) -> None:
-        """Save current config as backup."""
+        """Save current config as backup, including DeviceConfigStore contents."""
         from homeassistant.util.dt import utcnow
+
+        device_config: dict[str, Any] = {}
+        store = self._hass.data.get(DOMAIN, {}).get("device_config_store")
+        if store is not None:
+            device_config = store.to_dict()
 
         await self._store.async_save(
             {
                 "version": entry.version,
                 "data": dict(entry.data),
                 "options": dict(entry.options),
+                "device_config": device_config,
                 "backup_time": utcnow().isoformat(),
             }
         )
@@ -119,6 +126,31 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         hass.config_entries.async_update_entry(config_entry, data=new_data, version=5)
         _LOGGER.info("Migration to version 5 complete")
 
+    if config_entry.version < 6:
+        from .device_config_store import DeviceConfigStore
+
+        store = DeviceConfigStore(hass)
+        await store.async_load()
+        legacy_actions = config_entry.options.get(CONF_DEVICE_ACTIONS)
+        legacy_restore = config_entry.options.get(CONF_RESTORE_CONFIG)
+        if not store.has_any_data and (legacy_actions or legacy_restore):
+            await store.async_replace_all(
+                device_actions=legacy_actions,
+                restore_config=legacy_restore,
+            )
+            _LOGGER.info(
+                "Migrated legacy device_actions/restore_config to DeviceConfigStore"
+            )
+        new_options = {
+            k: v
+            for k, v in config_entry.options.items()
+            if k not in (CONF_DEVICE_ACTIONS, CONF_RESTORE_CONFIG)
+        }
+        hass.config_entries.async_update_entry(
+            config_entry, options=new_options, version=6
+        )
+        _LOGGER.info("Migration to version 6 complete")
+
     return True
 
 
@@ -134,12 +166,34 @@ async def async_setup_entry(
     """Set up Battery Guard from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
-    # Apply restored options from config flow backup restore
-    restore_options = dict(entry.data).pop("_restore_options", None)
-    if restore_options:
-        new_data = {k: v for k, v in entry.data.items() if k != "_restore_options"}
+    # Pull optional restored payloads stashed in entry.data by the config flow
+    # upload step. They are processed after the stores are loaded so legacy
+    # device_actions/restore_config can be routed to the DeviceConfigStore.
+    raw_restore_options = dict(entry.data).pop("_restore_options", None)
+    raw_restore_device_config = dict(entry.data).pop("_restore_device_config", None)
+    routed_device_actions: dict[str, Any] | None = None
+    routed_restore_config: dict[str, Any] | None = None
+    if raw_restore_options or raw_restore_device_config:
+        new_data = {
+            k: v
+            for k, v in entry.data.items()
+            if k not in ("_restore_options", "_restore_device_config")
+        }
+        # Strip legacy device_actions/restore_config out of restored options;
+        # they are routed to the DeviceConfigStore below.
+        filtered_options: dict[str, Any] = {}
+        if raw_restore_options:
+            for key, value in raw_restore_options.items():
+                if key == CONF_DEVICE_ACTIONS:
+                    routed_device_actions = value
+                elif key == CONF_RESTORE_CONFIG:
+                    routed_restore_config = value
+                else:
+                    filtered_options[key] = value
         hass.config_entries.async_update_entry(
-            entry, data=new_data, options={**entry.options, **restore_options}
+            entry,
+            data=new_data,
+            options={**entry.options, **filtered_options},
         )
         _LOGGER.info("Applied restored options from backup")
 
@@ -157,6 +211,29 @@ async def async_setup_entry(
     state_store = StateStore(hass)
     await state_store.async_load()
     hass.data[DOMAIN]["state_store"] = state_store
+
+    # Initialize device config store (device_actions + restore_config)
+    from .device_config_store import DeviceConfigStore
+
+    device_config_store = DeviceConfigStore(hass)
+    await device_config_store.async_load()
+    hass.data[DOMAIN]["device_config_store"] = device_config_store
+
+    # Apply routed backup payloads to the device config store
+    if raw_restore_device_config:
+        await device_config_store.async_replace_all(
+            device_actions=raw_restore_device_config.get(
+                CONF_DEVICE_ACTIONS
+            ),
+            restore_config=raw_restore_device_config.get(
+                CONF_RESTORE_CONFIG
+            ),
+        )
+    if routed_device_actions is not None or routed_restore_config is not None:
+        await device_config_store.async_replace_all(
+            device_actions=routed_device_actions,
+            restore_config=routed_restore_config,
+        )
 
     # Set up coordinator for unassigned device counting
     from .coordinator import BatteryGuardCoordinator

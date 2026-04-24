@@ -19,9 +19,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
-    CONF_DEVICE_ACTIONS,
     CONF_NOTIFY_SERVICES,
-    CONF_RESTORE_CONFIG,
     DEFAULT_RESTORE_CONFIG,
     DOMAIN,
     LABEL_TIER1,
@@ -56,14 +54,16 @@ def _get_state_store(hass: HomeAssistant) -> StateStore | None:
     return hass.data.get(DOMAIN, {}).get("state_store")
 
 
-def _get_device_actions(entry: ConfigEntry) -> dict[str, Any]:
-    """Get device_actions from config entry options."""
-    return entry.options.get(CONF_DEVICE_ACTIONS, {})
+def _get_device_actions(hass: HomeAssistant) -> dict[str, Any]:
+    """Get device_actions from the DeviceConfigStore."""
+    store = hass.data.get(DOMAIN, {}).get("device_config_store")
+    return store.get_device_actions() if store else {}
 
 
-def _get_restore_config(entry: ConfigEntry) -> dict[str, Any]:
-    """Get restore_config from config entry options."""
-    return entry.options.get(CONF_RESTORE_CONFIG, DEFAULT_RESTORE_CONFIG)
+def _get_restore_config(hass: HomeAssistant) -> dict[str, Any]:
+    """Get restore_config from the DeviceConfigStore."""
+    store = hass.data.get(DOMAIN, {}).get("device_config_store")
+    return store.get_restore_config() if store else DEFAULT_RESTORE_CONFIG
 
 
 def _get_action_config(
@@ -174,7 +174,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             return
 
         tier_key = _TIER_ACTION_KEY.get(tier, "tier1")
-        device_actions = _get_device_actions(entry)
+        device_actions = _get_device_actions(hass)
         state_store = _get_state_store(hass)
         failed_entities: list[str] = []
         action_counts: dict[str, int] = {}
@@ -234,7 +234,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         entities = er.async_entries_for_label(registry, actual_label_id)
 
         # Filter out disabled and stay_off entities
-        restore_config = _get_restore_config(entry)
+        restore_config = _get_restore_config(hass)
         stay_off_list: list[str] = restore_config.get("stay_off", [])
         entity_ids = [
             e.entity_id
@@ -322,7 +322,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Staged restore: restore tiers in configured order with delays."""
         _LOGGER.info("Executing staged Battery Guard restore")
 
-        restore_config = _get_restore_config(entry)
+        restore_config = _get_restore_config(hass)
         restore_order: list[str] = restore_config.get(
             "restore_order", ["tier3", "tier2", "tier1"]
         )

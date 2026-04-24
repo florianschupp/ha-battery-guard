@@ -255,13 +255,8 @@ def ws_get_device_actions(
     msg: dict[str, Any],
 ) -> None:
     """Return the current device_actions configuration."""
-    device_actions: dict[str, Any] = {}
-
-    # Find the Battery Guard config entry
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        device_actions = entry.options.get(CONF_DEVICE_ACTIONS, {})
-        break
-
+    store = hass.data.get(DOMAIN, {}).get("device_config_store")
+    device_actions = store.get_device_actions() if store else {}
     connection.send_result(msg["id"], {"device_actions": device_actions})
 
 
@@ -277,28 +272,24 @@ async def ws_set_device_actions(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Update the device_actions configuration in config entry options."""
+    """Update the device_actions configuration in the DeviceConfigStore."""
     new_device_actions = msg["device_actions"]
 
-    # Find the Battery Guard config entry
-    entry: ConfigEntry | None = None
-    for e in hass.config_entries.async_entries(DOMAIN):
-        entry = e
-        break
-
-    if entry is None:
+    store = hass.data.get(DOMAIN, {}).get("device_config_store")
+    if store is None:
         connection.send_error(
-            msg["id"], "not_found", "Battery Guard config entry not found"
+            msg["id"], "not_found", "Battery Guard device config store not initialized"
         )
         return
 
-    # Merge with existing options, updating device_actions
-    new_options = {**entry.options, CONF_DEVICE_ACTIONS: new_device_actions}
-    hass.config_entries.async_update_entry(entry, options=new_options)
+    await store.async_set_device_actions(new_device_actions)
 
-    # Auto-backup
+    # Auto-backup (captures the store contents)
+    entry: ConfigEntry | None = next(
+        iter(hass.config_entries.async_entries(DOMAIN)), None
+    )
     backup = hass.data.get(DOMAIN, {}).get("config_backup")
-    if backup:
+    if backup and entry is not None:
         await backup.save(entry)
 
     _LOGGER.info("Updated device_actions for %d entities", len(new_device_actions))
@@ -317,12 +308,8 @@ def ws_get_restore_config(
     msg: dict[str, Any],
 ) -> None:
     """Return the current restore configuration."""
-    restore_config: dict[str, Any] = DEFAULT_RESTORE_CONFIG
-
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        restore_config = entry.options.get(CONF_RESTORE_CONFIG, DEFAULT_RESTORE_CONFIG)
-        break
-
+    store = hass.data.get(DOMAIN, {}).get("device_config_store")
+    restore_config = store.get_restore_config() if store else DEFAULT_RESTORE_CONFIG
     connection.send_result(msg["id"], {"restore_config": restore_config})
 
 
@@ -338,26 +325,23 @@ async def ws_set_restore_config(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Update the restore configuration in config entry options."""
+    """Update the restore configuration in the DeviceConfigStore."""
     new_restore_config = msg["restore_config"]
 
-    entry: ConfigEntry | None = None
-    for e in hass.config_entries.async_entries(DOMAIN):
-        entry = e
-        break
-
-    if entry is None:
+    store = hass.data.get(DOMAIN, {}).get("device_config_store")
+    if store is None:
         connection.send_error(
-            msg["id"], "not_found", "Battery Guard config entry not found"
+            msg["id"], "not_found", "Battery Guard device config store not initialized"
         )
         return
 
-    new_options = {**entry.options, CONF_RESTORE_CONFIG: new_restore_config}
-    hass.config_entries.async_update_entry(entry, options=new_options)
+    await store.async_set_restore_config(new_restore_config)
 
-    # Auto-backup
+    entry: ConfigEntry | None = next(
+        iter(hass.config_entries.async_entries(DOMAIN)), None
+    )
     backup = hass.data.get(DOMAIN, {}).get("config_backup")
-    if backup:
+    if backup and entry is not None:
         await backup.save(entry)
 
     _LOGGER.info("Updated restore_config")
@@ -392,11 +376,14 @@ def ws_export_config(
         )
         return
 
+    store = hass.data.get(DOMAIN, {}).get("device_config_store")
+    device_config = store.to_dict() if store else {}
     connection.send_result(
         msg["id"],
         {
             "data": dict(entry.data),
             "options": dict(entry.options),
+            "device_config": device_config,
             "version": VERSION,
         },
     )
@@ -439,9 +426,39 @@ async def ws_import_config(
     new_data = {**entry.data, **imported["data"]}
     hass.config_entries.async_update_entry(entry, data=new_data)
 
-    # Merge options if present
-    if "options" in imported and isinstance(imported["options"], dict):
-        new_options = {**entry.options, **imported["options"]}
+    # Route device_actions/restore_config to the DeviceConfigStore.
+    # Priority: explicit "device_config" key (new format) wins.
+    # Otherwise pull legacy keys out of "options" before merging the rest.
+    store = hass.data.get(DOMAIN, {}).get("device_config_store")
+    imported_options = imported.get("options") or {}
+    if not isinstance(imported_options, dict):
+        imported_options = {}
+
+    device_actions_payload: dict[str, Any] | None = None
+    restore_config_payload: dict[str, Any] | None = None
+
+    imported_device_config = imported.get("device_config")
+    if isinstance(imported_device_config, dict):
+        device_actions_payload = imported_device_config.get(CONF_DEVICE_ACTIONS)
+        restore_config_payload = imported_device_config.get(CONF_RESTORE_CONFIG)
+    else:
+        # Legacy-format backup: pull from options
+        if CONF_DEVICE_ACTIONS in imported_options:
+            device_actions_payload = imported_options.pop(CONF_DEVICE_ACTIONS)
+        if CONF_RESTORE_CONFIG in imported_options:
+            restore_config_payload = imported_options.pop(CONF_RESTORE_CONFIG)
+
+    if store and (
+        device_actions_payload is not None or restore_config_payload is not None
+    ):
+        await store.async_replace_all(
+            device_actions=device_actions_payload,
+            restore_config=restore_config_payload,
+        )
+
+    # Merge remaining options (without the routed legacy keys)
+    if imported_options:
+        new_options = {**entry.options, **imported_options}
         hass.config_entries.async_update_entry(entry, options=new_options)
 
     # Auto-backup the imported config

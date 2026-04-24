@@ -41,7 +41,7 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
     so the integration can be installed before Modbus is set up.
     """
 
-    VERSION = 5
+    VERSION = 6
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -121,8 +121,10 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
                 backup = self._backup_data
                 if backup and "data" in backup:
                     self.data = {**backup["data"]}
-                    # Also store options to apply after entry creation
+                    # Stash options + device_config payloads to apply after
+                    # entry creation in async_setup_entry.
                     self._restore_options = backup.get("options", {})
+                    self._restore_device_config = backup.get("device_config", {})
                     return await self.async_step_notifications()
             # User chose not to restore — continue normal flow
             self._backup_data = None
@@ -153,11 +155,15 @@ class BatteryGuardConfigFlow(ConfigFlow, domain=DOMAIN):
             self.data.setdefault(CONF_GRID_SENSOR, "")
             self.data.setdefault(CONF_USE_VOLTAGE, False)
 
-            # If restoring, include options in data temporarily
-            # They'll be moved to options in async_setup_entry
+            # If restoring, include options + device_config in data temporarily.
+            # They'll be applied in async_setup_entry and then stripped from
+            # entry.data.
             restore_options = getattr(self, "_restore_options", None)
             if restore_options:
                 self.data["_restore_options"] = restore_options
+            restore_device_config = getattr(self, "_restore_device_config", None)
+            if restore_device_config:
+                self.data["_restore_device_config"] = restore_device_config
 
             return self.async_create_entry(
                 title="Battery Guard",
@@ -358,7 +364,9 @@ class BatteryGuardOptionsFlow(OptionsFlow):
                     self.config_entry, data=new_data
                 )
                 await self.hass.config_entries.async_reload(self.config_entry.entry_id)
-                return self.async_create_entry(title="", data={})
+                return self.async_create_entry(
+                    title="", data=dict(self.config_entry.options)
+                )
 
         current = self.config_entry.data
 
