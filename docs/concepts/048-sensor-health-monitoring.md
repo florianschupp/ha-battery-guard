@@ -1,6 +1,7 @@
 # Concept #48 — Sensor Health Monitoring (E2)
 
-Status: Implemented in v2.22.0-rc.2 (concept + code adversarially reviewed; staging feedback incorporated)
+Status: ✅ Accepted & released in v2.22.0 (2026-06-02). All AC met; AC-2 and AC-5
+live-validated by a real Modbus-contention event on staging.
 Issue: https://github.com/florianschupp/ha-battery-guard/issues/48
 Epic: #52 (Robustness against cloud/total power outage)
 
