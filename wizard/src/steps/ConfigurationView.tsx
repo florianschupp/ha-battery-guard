@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getConfig, exportConfig, importConfig } from '../services/ha-websocket'
+import { getConfig, exportConfig, importConfig, getStates } from '../services/ha-websocket'
 
 interface ConfigData {
   soc_sensor: string
@@ -27,6 +27,7 @@ const DEFAULT_CONFIG_DATA: ConfigData = {
 
 export function ConfigurationView() {
   const [config, setConfig] = useState<ConfigData>(DEFAULT_CONFIG_DATA)
+  const [statesMap, setStatesMap] = useState<Map<string, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const loaded = useRef(false)
 
@@ -34,12 +35,35 @@ export function ConfigurationView() {
     if (loaded.current) return
     loaded.current = true
     let cancelled = false
+
+    // Refresh live entity availability periodically so the badges don't go stale.
+    const refreshStates = async () => {
+      try {
+        const states = await getStates()
+        if (cancelled || !Array.isArray(states)) return
+        const list = states as Array<{ entity_id: string; state: string }>
+        setStatesMap(new Map(list.map((s) => [s.entity_id, s.state])))
+      } catch {
+        /* transient states-fetch error — keep the previous snapshot */
+      }
+    }
+
     getConfig()
       .then((data) => { if (!cancelled) setConfig(data as unknown as ConfigData) })
       .catch(() => { /* pre-v2.9 backend */ })
       .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+
+    refreshStates()
+    const timer = setInterval(refreshStates, 15000)
+    return () => { cancelled = true; clearInterval(timer) }
   }, [])
+
+  /** A configured sensor is flagged when it is missing or unavailable/unknown. */
+  const isUnavailable = (entityId: string): boolean => {
+    if (!entityId) return false
+    const state = statesMap.get(entityId)
+    return state === undefined || state === 'unavailable' || state === 'unknown'
+  }
 
   if (loading) {
     return (
@@ -70,16 +94,24 @@ export function ConfigurationView() {
           </h3>
         </div>
         <div className="px-5 py-4 space-y-3">
-          <SensorRow label="SOC Sensor" value={config.soc_sensor} />
-          <SensorRow label="Grid Sensor" value={config.grid_sensor} />
+          <SensorRow
+            label="SOC Sensor"
+            value={config.soc_sensor}
+            unavailable={isUnavailable(config.soc_sensor)}
+          />
+          <SensorRow
+            label="Grid Sensor"
+            value={config.grid_sensor}
+            unavailable={isUnavailable(config.grid_sensor)}
+          />
           {config.use_voltage && (
             <>
               <div className="border-t border-gray-100 pt-3">
                 <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Voltage Monitoring</span>
               </div>
-              <SensorRow label="Phase A" value={config.voltage_phase_a} />
-              <SensorRow label="Phase B" value={config.voltage_phase_b} />
-              <SensorRow label="Phase C" value={config.voltage_phase_c} />
+              <SensorRow label="Phase A" value={config.voltage_phase_a} unavailable={isUnavailable(config.voltage_phase_a)} />
+              <SensorRow label="Phase B" value={config.voltage_phase_b} unavailable={isUnavailable(config.voltage_phase_b)} />
+              <SensorRow label="Phase C" value={config.voltage_phase_c} unavailable={isUnavailable(config.voltage_phase_c)} />
             </>
           )}
         </div>
@@ -97,8 +129,8 @@ export function ConfigurationView() {
             </h3>
           </div>
           <div className="px-5 py-4 space-y-3">
-            <SensorRow label="Charging cutoff SOC" value={config.battery_charge_entity} />
-            <SensorRow label="Discharge cutoff SOC" value={config.battery_discharge_entity} />
+            <SensorRow label="Charging cutoff SOC" value={config.battery_charge_entity} unavailable={isUnavailable(config.battery_charge_entity)} />
+            <SensorRow label="Discharge cutoff SOC" value={config.battery_discharge_entity} unavailable={isUnavailable(config.battery_discharge_entity)} />
           </div>
         </div>
       )}
@@ -241,13 +273,52 @@ function BackupActions() {
   )
 }
 
-/** Read-only sensor display row */
-function SensorRow({ label, value }: { label: string; value: string }) {
+/** Read-only sensor display row, with an unavailable warning when flagged */
+function SensorRow({
+  label,
+  value,
+  unavailable = false,
+}: {
+  label: string
+  value: string
+  unavailable?: boolean
+}) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between gap-3">
       <span className="text-sm text-gray-600">{label}</span>
       {value ? (
-        <code className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded">{value}</code>
+        <div className="flex items-center gap-2">
+          {unavailable && (
+            <span
+              className="flex items-center gap-1 text-xs font-medium text-red-600"
+              title="This sensor is currently unavailable — Battery Guard monitoring is degraded."
+            >
+              <svg
+                className="w-3.5 h-3.5 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                />
+              </svg>
+              unavailable
+            </span>
+          )}
+          <code
+            className={`text-xs px-2 py-1 rounded ${
+              unavailable
+                ? 'bg-red-50 text-red-700'
+                : 'bg-gray-50 text-gray-700'
+            }`}
+          >
+            {value}
+          </code>
+        </div>
       ) : (
         <span className="text-xs text-gray-400 italic">Not configured</span>
       )}

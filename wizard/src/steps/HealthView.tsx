@@ -16,17 +16,22 @@ function formatLastSeen(iso: string | null): string {
 export function HealthView() {
   const [sensors, setSensors] = useState<SensorHealth[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    setRefreshing(true)
     try {
       const data = await getSensorHealth()
       setSensors(data)
       setError(null)
+      setLastUpdated(new Date())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sensor health')
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [])
 
@@ -42,12 +47,23 @@ export function HealthView() {
     <div className="max-w-2xl mx-auto py-6 px-4">
       <div className="flex items-center justify-between mb-1">
         <h1 className="text-xl font-semibold text-gray-900">Sensor Health</h1>
-        <button
-          onClick={load}
-          className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          {lastUpdated && (
+            <span className="text-xs text-gray-400">
+              Updated {lastUpdated.toLocaleTimeString()}
+            </span>
+          )}
+          <button
+            onClick={load}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-default transition-colors"
+          >
+            {refreshing && (
+              <span className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            )}
+            Refresh
+          </button>
+        </div>
       </div>
       <p className="text-sm text-gray-500 mb-5">
         Availability of the sensors Battery Guard relies on. If a sensor is

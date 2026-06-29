@@ -1,6 +1,6 @@
 # Concept #48 — Sensor Health Monitoring (E2)
 
-Status: Implemented in v2.22.0-rc.1 (concept + code adversarially reviewed; fixes incorporated)
+Status: Implemented in v2.22.0-rc.2 (concept + code adversarially reviewed; staging feedback incorporated)
 Issue: https://github.com/florianschupp/ha-battery-guard/issues/48
 Epic: #52 (Robustness against cloud/total power outage)
 
@@ -149,3 +149,11 @@ may re-alert once; acceptable.
 5. Panel health page shows per sensor: name, state, available, last-seen.
 6. No false alarms on brief dropouts (debounce + flapping protection); an
    unconfigured (empty) grid/soc sensor produces zero alerts.
+7. **[added rc.2]** The Configuration page shows a live "unavailable" warning
+   next to each configured sensor ID (refreshed every 15s).
+
+## Staging feedback (rc.1 → rc.2)
+- Health page "Refresh" button gave no visible feedback → added a spinner +
+  "Updated <time>" timestamp.
+- Added per-sensor unavailable warnings on the Configuration page (AC #7), with a
+  15s live refresh so the badges never go stale.
