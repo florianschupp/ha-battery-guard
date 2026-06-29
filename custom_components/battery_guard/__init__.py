@@ -15,6 +15,7 @@ from .const import (
     CONF_BATTERY_OPTIMIZATION,
     CONF_DEVICE_ACTIONS,
     CONF_RESTORE_CONFIG,
+    DATA_SENSOR_HEALTH,
     DEFAULT_BATTERY_MAX_SOC,
     DEFAULT_BATTERY_MIN_SOC,
     DEFAULT_BATTERY_OPTIMIZATION,
@@ -267,6 +268,13 @@ async def async_setup_entry(
     await engine.async_start()
     hass.data[DOMAIN][entry.entry_id]["engine"] = engine
 
+    # Start fail-isolated sensor health watchdog
+    from .sensor_health import SensorHealthMonitor
+
+    monitor = SensorHealthMonitor(hass, entry)
+    await monitor.async_start()
+    hass.data[DOMAIN][entry.entry_id]["sensor_health_monitor"] = monitor
+
     # Register panel
     from .panel import async_register_panel
 
@@ -298,8 +306,12 @@ async def async_unload_entry(
 
     await async_unload_services(hass)
 
-    # Remove stored data
+    # Remove stored data (only when the entry actually unloaded — otherwise the
+    # entry is still loaded and the watchdog must keep running)
     if unload_ok:
+        if data and "sensor_health_monitor" in data:
+            await data["sensor_health_monitor"].async_stop()
+        hass.data[DOMAIN].pop(DATA_SENSOR_HEALTH, None)
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok

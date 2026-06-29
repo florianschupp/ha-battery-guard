@@ -10,6 +10,7 @@ export type WizardStep =
   | 'settings'
   | 'battery'
   | 'configuration'
+  | 'health'
 
 export const WIZARD_STEPS: WizardStep[] = [
   'connection',
@@ -29,6 +30,16 @@ export const STEP_LABELS: Record<WizardStep, string> = {
   settings: 'Outage',
   battery: 'Battery',
   configuration: 'Configuration',
+  health: 'Health',
+}
+
+/** Health status of one required source sensor (from the integration) */
+export interface SensorHealth {
+  entity_id: string
+  role: string
+  available: boolean
+  state: string | null
+  last_available: string | null
 }
 
 /** Entity with its current tier assignment for the wizard */

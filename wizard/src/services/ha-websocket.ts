@@ -8,7 +8,7 @@ import type {
   HAEntityRegistryEntry,
   HALabel,
 } from '../types/ha-types'
-import type { RestoreConfig } from '../types/wizard-types'
+import type { RestoreConfig, SensorHealth } from '../types/wizard-types'
 
 let connection: Connection | null = null
 
@@ -248,6 +248,14 @@ export async function setRestoreConfig(
   await sendMessage('battery_guard/set_restore_config', {
     restore_config: restoreConfig,
   })
+}
+
+/** Get the health snapshot of the required source sensors */
+export async function getSensorHealth(): Promise<SensorHealth[]> {
+  const result = await sendMessage<{ sensor_health: SensorHealth[] }>(
+    'battery_guard/get_sensor_health',
+  )
+  return result.sensor_health
 }
 
 // ============================================================================

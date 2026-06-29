@@ -10,6 +10,7 @@ import { DashboardView } from './steps/DashboardView'
 import { SystemSettingsView } from './steps/SystemSettingsView'
 import { ConfigurationView } from './steps/ConfigurationView'
 import { BatteryView } from './steps/BatteryView'
+import { HealthView } from './steps/HealthView'
 import { connectFromPanel, isInsidePanel, listEntities } from './services/ha-websocket'
 import { BATTERY_GUARD_LABEL_IDS } from './lib/constants'
 
@@ -93,6 +94,8 @@ function WizardRouter() {
       return <BatteryView />
     case 'configuration':
       return <ConfigurationView />
+    case 'health':
+      return <HealthView />
     default:
       return <ConnectionStep />
   }

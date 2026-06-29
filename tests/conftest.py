@@ -57,6 +57,14 @@ _ha_helpers.storage = _ha_helpers_storage
 _ha_helpers_event = MagicMock()
 _ha_helpers.event = _ha_helpers_event
 
+# Util (dt) — used by sensor_health for timestamps
+from datetime import datetime as _datetime, timezone as _timezone  # noqa: E402
+
+_ha_util = types.ModuleType("homeassistant.util")
+_ha_util_dt = MagicMock()
+_ha_util_dt.utcnow = lambda: _datetime(2026, 1, 1, tzinfo=_timezone.utc)
+_ha_util.dt = _ha_util_dt
+
 _ha_helpers_selector = MagicMock()
 _ha_helpers.selector = _ha_helpers_selector
 
@@ -79,6 +87,8 @@ sys.modules["homeassistant.helpers.event"] = _ha_helpers_event
 sys.modules["homeassistant.helpers.storage"] = _ha_helpers_storage
 sys.modules["homeassistant.helpers.selector"] = _ha_helpers_selector
 sys.modules["homeassistant.helpers.label_registry"] = MagicMock()
+sys.modules["homeassistant.util"] = _ha_util
+sys.modules["homeassistant.util.dt"] = _ha_util_dt
 sys.modules["voluptuous"] = MagicMock()
 
 # Now safe to import Battery Guard modules

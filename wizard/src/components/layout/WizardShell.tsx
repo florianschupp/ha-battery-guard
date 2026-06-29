@@ -17,11 +17,18 @@ const NAV_TABS: { step: WizardStep; label: string }[] = [
   { step: 'dashboard', label: 'Appliances' },
   { step: 'settings', label: 'Outage' },
   { step: 'battery', label: 'Battery' },
+  { step: 'health', label: 'Health' },
   { step: 'configuration', label: 'Configuration' },
 ]
 
 /** Steps that are part of the deployed navigation (not wizard flow) */
-const DEPLOYED_STEPS: WizardStep[] = ['dashboard', 'settings', 'battery', 'configuration']
+const DEPLOYED_STEPS: WizardStep[] = [
+  'dashboard',
+  'settings',
+  'battery',
+  'health',
+  'configuration',
+]
 
 /** Modal showing release notes fetched from GitHub */
 function ReleaseNotesModal({

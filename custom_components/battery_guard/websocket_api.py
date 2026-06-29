@@ -38,6 +38,7 @@ from .const import (
     CONF_VOLTAGE_PHASE_A,
     CONF_VOLTAGE_PHASE_B,
     CONF_VOLTAGE_PHASE_C,
+    DATA_SENSOR_HEALTH,
     DEFAULT_BATTERY_MAX_SOC,
     DEFAULT_BATTERY_MIN_SOC,
     DEFAULT_BATTERY_OPTIMIZATION,
@@ -53,7 +54,15 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def async_register_websocket_api(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Register WebSocket API commands."""
+    """Register WebSocket API commands.
+
+    Commands are registered globally by type, so register only once even though
+    this runs per config entry (also guards against re-registration on reload).
+    """
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get("_ws_registered"):
+        return
+
     websocket_api.async_register_command(hass, ws_get_version)
     websocket_api.async_register_command(hass, ws_get_config)
     websocket_api.async_register_command(hass, ws_set_config)
@@ -61,8 +70,11 @@ def async_register_websocket_api(hass: HomeAssistant, entry: ConfigEntry) -> Non
     websocket_api.async_register_command(hass, ws_set_device_actions)
     websocket_api.async_register_command(hass, ws_get_restore_config)
     websocket_api.async_register_command(hass, ws_set_restore_config)
+    websocket_api.async_register_command(hass, ws_get_sensor_health)
     websocket_api.async_register_command(hass, ws_export_config)
     websocket_api.async_register_command(hass, ws_import_config)
+
+    domain_data["_ws_registered"] = True
     _LOGGER.debug("Registered Battery Guard WebSocket API commands")
 
 
@@ -79,6 +91,22 @@ def ws_get_version(
 ) -> None:
     """Return the current Battery Guard version."""
     connection.send_result(msg["id"], {"version": VERSION})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "battery_guard/get_sensor_health",
+    }
+)
+@callback
+def ws_get_sensor_health(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return the current health snapshot of the required source sensors."""
+    health = hass.data.get(DOMAIN, {}).get(DATA_SENSOR_HEALTH, [])
+    connection.send_result(msg["id"], {"sensor_health": health})
 
 
 @websocket_api.websocket_command(

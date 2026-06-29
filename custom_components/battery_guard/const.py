@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "2.21.0"
+VERSION = "2.22.0-rc.1"
 
 # Platforms
 PLATFORMS = [
@@ -59,6 +59,13 @@ TRACKED_DOMAINS = ["switch", "input_boolean", "climate", "light", "media_player"
 # Debounce timers (seconds)
 OUTAGE_DEBOUNCE_SECONDS = 5
 RESTORE_DEBOUNCE_SECONDS = 30
+
+# Sensor health watchdog (seconds)
+HEALTH_DEBOUNCE_SECONDS = 60
+HEALTH_STARTUP_GRACE_SECONDS = 60
+
+# hass.data key for the published sensor-health snapshot
+DATA_SENSOR_HEALTH = "sensor_health"
 
 # Retry settings
 MAX_RETRIES = 3
