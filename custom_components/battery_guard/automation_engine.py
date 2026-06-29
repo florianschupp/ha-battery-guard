@@ -17,7 +17,12 @@ import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import (
+    STATE_OFF,
+    STATE_ON,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+)
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import (
@@ -59,6 +64,9 @@ class BatteryGuardAutomationEngine:
         self._restore_debounce_handle: CALLBACK_TYPE | None = None
         self._outage_start_time: float | None = None
         self._operation_lock = asyncio.Lock()
+        # Guards against duplicate critical-SOC alarms within one emergency;
+        # reset when the 'active' switch turns off (see _handle_active_change).
+        self._critical_alerted: bool = False
 
     async def async_start(self) -> None:
         """Start all event listeners."""
@@ -102,6 +110,19 @@ class BatteryGuardAutomationEngine:
                 )
             )
             _LOGGER.debug("Listening to unassigned devices: %s", unassigned_entity)
+
+        # Listen to the emergency 'active' switch to re-arm the critical alarm
+        # whenever emergency mode ends (covers the grid-restored event AND a
+        # manual restore_all, which both turn this switch off).
+        active_entity = self._find_entity("active")
+        if active_entity:
+            self._unsub_listeners.append(
+                async_track_state_change_event(
+                    self.hass,
+                    [active_entity],
+                    self._handle_active_change,
+                )
+            )
 
     async def async_stop(self) -> None:
         """Stop all event listeners and cancel pending debounce timers."""
@@ -148,6 +169,18 @@ class BatteryGuardAutomationEngine:
             return float(state.state)
         except (ValueError, TypeError):
             return None
+
+    @callback
+    def _handle_active_change(self, event: Event) -> None:
+        """Re-arm the critical-SOC alarm guard when emergency mode ends.
+
+        Only a genuine OFF transition counts — a transient `unavailable`/
+        `unknown` of the switch must NOT re-arm mid-emergency (would allow
+        duplicate critical alarms).
+        """
+        new_state = event.data.get("new_state")
+        if new_state is not None and new_state.state == STATE_OFF:
+            self._critical_alerted = False
 
     # =========================================================================
     # 1 & 3: Power Outage / Grid Restored
@@ -362,6 +395,23 @@ class BatteryGuardAutomationEngine:
                 blocking=True,
             )
 
+            # Level-based SOC check: an outage that begins ALREADY below the
+            # tier-2 / critical thresholds produces no downward crossing, so the
+            # crossing handlers in _handle_soc_change never fire. Evaluate the
+            # current level here (we already hold _operation_lock, so call the
+            # lock-free _shed_tier2_locked; _on_critical_soc is lock-free too).
+            if soc is not None:
+                tier2_threshold = self._get_threshold("tier2_threshold")
+                if (
+                    tier2_threshold is not None
+                    and soc < tier2_threshold
+                    and not self._get_switch_state("tier2_disabled")
+                ):
+                    await self._shed_tier2_locked(soc, tier2_threshold)
+                if soc < self._critical_soc and not self._critical_alerted:
+                    self._critical_alerted = True
+                    await self._on_critical_soc(soc)
+
     async def _on_grid_restored(self) -> None:
         """Handle grid restored: restore all, notify."""
         async with self._operation_lock:
@@ -459,8 +509,13 @@ class BatteryGuardAutomationEngine:
                     self._on_soc_recovered(new_soc, recovery_threshold)
                 )
 
-        # Automation 5: Critical SOC level
-        if old_soc >= self._critical_soc and new_soc < self._critical_soc:
+        # Automation 5: Critical SOC level (de-duped via _critical_alerted)
+        if (
+            old_soc >= self._critical_soc
+            and new_soc < self._critical_soc
+            and not self._critical_alerted
+        ):
+            self._critical_alerted = True
             self.hass.async_create_task(self._on_critical_soc(new_soc))
 
     async def _on_soc_below_threshold(
@@ -468,46 +523,58 @@ class BatteryGuardAutomationEngine:
     ) -> None:
         """Handle SOC dropping below tier 2 threshold."""
         async with self._operation_lock:
-            _LOGGER.warning(
-                "SOC %.1f%% below threshold %.1f%% — turning off tier 2",
-                current_soc,
-                threshold,
-            )
+            await self._shed_tier2_locked(current_soc, threshold)
 
-            # Turn off tier 2
+    async def _shed_tier2_locked(
+        self, current_soc: float, threshold: float
+    ) -> None:
+        """Turn off tier 2, set the disabled flag, and notify.
+
+        The caller MUST already hold ``self._operation_lock``. The lock is
+        non-reentrant, so this lock-free body is shared by
+        ``_on_soc_below_threshold`` (crossing) and ``_on_power_outage``
+        (level evaluation at outage start).
+        """
+        _LOGGER.warning(
+            "SOC %.1f%% below threshold %.1f%% — turning off tier 2",
+            current_soc,
+            threshold,
+        )
+
+        # Turn off tier 2
+        await self.hass.services.async_call(
+            DOMAIN, "tier_off", {"tier": LABEL_TIER2}, blocking=True
+        )
+
+        # Check for failures
+        result = self.hass.data.get(DOMAIN, {}).get("last_action_result", {})
+        failed = result.get("failed", [])
+        total = result.get("total", 0)
+        action_counts = result.get("action_counts", {})
+
+        # Set tier2_disabled flag
+        tier2_disabled_entity = self._find_entity("tier2_disabled")
+        if tier2_disabled_entity:
             await self.hass.services.async_call(
-                DOMAIN, "tier_off", {"tier": LABEL_TIER2}, blocking=True
+                "switch",
+                "turn_on",
+                {},
+                target={"entity_id": tier2_disabled_entity},
             )
 
-            # Check for failures
-            result = self.hass.data.get(DOMAIN, {}).get("last_action_result", {})
-            failed = result.get("failed", [])
-            total = result.get("total", 0)
-            action_counts = result.get("action_counts", {})
+        status = self._format_action_result(total, failed, action_counts)
+        message = f"Tier 2: {status}\nBattery: {current_soc:.0f}%"
 
-            # Set tier2_disabled flag
-            tier2_disabled_entity = self._find_entity("tier2_disabled")
-            if tier2_disabled_entity:
-                await self.hass.services.async_call(
-                    "switch",
-                    "turn_on",
-                    {},
-                    target={"entity_id": tier2_disabled_entity},
-                )
-
-            status = self._format_action_result(total, failed, action_counts)
-            message = f"Tier 2: {status}\nBattery: {current_soc:.0f}%"
-
-            await self.hass.services.async_call(
-                DOMAIN,
-                "notify",
-                {
-                    "title": "🔋 Low Battery — Tier 2 Off",
-                    "message": message,
-                    "critical": False,
-                },
-                blocking=True,
-            )
+        await self.hass.services.async_call(
+            DOMAIN,
+            "notify",
+            {
+                "title": "🔋 Low Battery — Tier 2 Off",
+                "message": message,
+                "critical": False,
+            },
+            blocking=True,
+        )
 
     async def _on_soc_recovered(self, current_soc: float, threshold: float) -> None:
         """Handle SOC recovering above recovery threshold."""

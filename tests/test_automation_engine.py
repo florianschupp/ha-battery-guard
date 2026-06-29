@@ -14,6 +14,7 @@ from custom_components.battery_guard.const import (
     DEFAULT_BATTERY_OPTIMIZATION,
     DOMAIN,
     LABEL_TIER1,
+    LABEL_TIER2,
 )
 from tests.conftest import MockState, make_state
 
@@ -338,3 +339,220 @@ class TestRestoreFlow:
 
         # No service calls should be made
         mock_hass.services.async_call.assert_not_called()
+
+
+class TestLevelBasedOutageStart:
+    """Issue #53 — outage that begins ALREADY below the thresholds."""
+
+    def _setup(self, engine, mock_hass, *, soc, tier2_disabled=False, critical=10, t2=30):
+        engine._find_entity = MagicMock(return_value=None)
+        mock_hass.data[DOMAIN] = {"last_action_result": {"total": 1, "failed": []}}
+        engine._shed_tier2_locked = AsyncMock()
+        engine._on_critical_soc = AsyncMock()
+        engine._get_soc_value = MagicMock(return_value=soc)
+        engine._get_threshold = MagicMock(return_value=t2)
+        engine._get_switch_state = MagicMock(return_value=tier2_disabled)
+        engine._critical_soc = critical
+
+    @pytest.mark.asyncio
+    async def test_below_tier2_sheds_tier2_no_alarm(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        self._setup(engine, mock_hass, soc=20)  # < t2=30, > critical=10
+        await engine._on_power_outage()
+        engine._shed_tier2_locked.assert_awaited_once()
+        engine._on_critical_soc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_below_critical_sheds_and_alarms(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        self._setup(engine, mock_hass, soc=8)  # < critical=10
+        await engine._on_power_outage()
+        engine._shed_tier2_locked.assert_awaited_once()
+        engine._on_critical_soc.assert_awaited_once()
+        assert engine._critical_alerted is True
+
+    @pytest.mark.asyncio
+    async def test_healthy_soc_no_level_action(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        self._setup(engine, mock_hass, soc=50)  # >= t2
+        await engine._on_power_outage()
+        engine._shed_tier2_locked.assert_not_awaited()
+        engine._on_critical_soc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_tier2_already_disabled_not_reshed(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        self._setup(engine, mock_hass, soc=20, tier2_disabled=True)
+        await engine._on_power_outage()
+        engine._shed_tier2_locked.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_soc_unavailable_no_level_action(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        self._setup(engine, mock_hass, soc=None)
+        await engine._on_power_outage()  # must not raise
+        engine._shed_tier2_locked.assert_not_awaited()
+        engine._on_critical_soc.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_critical_alarm_deduped_on_reentry(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        self._setup(engine, mock_hass, soc=8)
+        await engine._on_power_outage()
+        await engine._on_power_outage()  # re-entry, no active-off between
+        assert engine._on_critical_soc.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_real_tier2_shed_under_lock_no_deadlock(self, mock_hass, mock_entry):
+        # Runs the REAL _shed_tier2_locked while _on_power_outage holds the
+        # non-reentrant lock — a re-introduced `async with self._operation_lock`
+        # in the helper would hang here (caught by wait_for), not pass silently.
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._find_entity = MagicMock(return_value=None)
+        mock_hass.data[DOMAIN] = {"last_action_result": {"total": 1, "failed": []}}
+        engine._get_soc_value = MagicMock(return_value=20)  # < t2=30, > critical
+        engine._get_threshold = MagicMock(return_value=30)
+        engine._get_switch_state = MagicMock(return_value=False)
+        engine._critical_soc = 10
+
+        await asyncio.wait_for(engine._on_power_outage(), timeout=2.0)
+
+        tier_off = [
+            c
+            for c in mock_hass.services.async_call.call_args_list
+            if c.args[0] == DOMAIN and c.args[1] == "tier_off"
+        ]
+        assert len(tier_off) == 2  # TIER1 + TIER2
+        notify = [
+            c
+            for c in mock_hass.services.async_call.call_args_list
+            if c.args[0] == DOMAIN and c.args[1] == "notify"
+        ]
+        assert len(notify) == 2  # outage + tier-2
+
+    @pytest.mark.asyncio
+    async def test_tier2_not_reshed_on_reentry_with_propagation(
+        self, mock_hass, mock_entry
+    ):
+        # tier2_disabled flips True after the first shed; the second outage-start
+        # must read the propagated state and skip re-shedding.
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._find_entity = MagicMock(return_value=None)
+        mock_hass.data[DOMAIN] = {"last_action_result": {"total": 1, "failed": []}}
+        engine._get_soc_value = MagicMock(return_value=20)
+        engine._get_threshold = MagicMock(return_value=30)
+        engine._on_critical_soc = AsyncMock()
+        engine._critical_soc = 10
+
+        sw = {"tier2_disabled": False}
+        engine._get_switch_state = MagicMock(side_effect=lambda k: sw.get(k, False))
+
+        async def fake_shed(soc, threshold):
+            sw["tier2_disabled"] = True
+
+        engine._shed_tier2_locked = AsyncMock(side_effect=fake_shed)
+
+        await engine._on_power_outage()
+        await engine._on_power_outage()  # tier2_disabled now True → skip
+        assert engine._shed_tier2_locked.await_count == 1
+
+
+class TestCrossingCriticalGuard:
+    """Issue #53 — the flag-guarded crossing critical branch still fires once."""
+
+    def _event(self, old, new):
+        ev = MagicMock()
+        ev.data = {"old_state": make_state(old), "new_state": make_state(new)}
+        return ev
+
+    def test_first_crossing_fires_and_sets_flag(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._critical_soc = 10
+        engine._critical_alerted = False
+        engine._get_switch_state = MagicMock(return_value=True)  # active
+        engine._get_threshold = MagicMock(return_value=30)
+        engine._on_critical_soc = MagicMock()
+
+        engine._handle_soc_change(self._event("11", "9"))  # crosses critical
+
+        engine._on_critical_soc.assert_called_once()
+        assert engine._critical_alerted is True
+
+    def test_second_crossing_deduped(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._critical_soc = 10
+        engine._critical_alerted = True  # already alerted this emergency
+        engine._get_switch_state = MagicMock(return_value=True)
+        engine._get_threshold = MagicMock(return_value=30)
+        engine._on_critical_soc = MagicMock()
+
+        engine._handle_soc_change(self._event("11", "9"))
+
+        engine._on_critical_soc.assert_not_called()
+
+
+class TestCriticalAlarmRearm:
+    """Issue #53 — _critical_alerted resets when emergency ends (active → off)."""
+
+    def _event(self, new_state):
+        ev = MagicMock()
+        ev.data = {"new_state": new_state}
+        return ev
+
+    def test_active_off_resets_flag(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._critical_alerted = True
+        engine._handle_active_change(self._event(make_state("off")))
+        assert engine._critical_alerted is False
+
+    def test_active_on_keeps_flag(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._critical_alerted = True
+        engine._handle_active_change(self._event(make_state("on")))
+        assert engine._critical_alerted is True
+
+    def test_active_none_keeps_flag(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._critical_alerted = True
+        engine._handle_active_change(self._event(None))
+        assert engine._critical_alerted is True
+
+    def test_active_unavailable_does_not_rearm(self, mock_hass, mock_entry):
+        # A transient unavailable of the active switch mid-emergency must NOT
+        # re-arm the alarm (else duplicate critical alarms).
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._critical_alerted = True
+        engine._handle_active_change(self._event(make_state("unavailable")))
+        assert engine._critical_alerted is True
+
+
+class TestTier2ShedRefactor:
+    """Issue #53 — extracted _shed_tier2_locked keeps the crossing path working."""
+
+    @pytest.mark.asyncio
+    async def test_on_soc_below_threshold_still_sheds_tier2(
+        self, mock_hass, mock_entry
+    ):
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._find_entity = MagicMock(
+            return_value="switch.battery_guard_tier2_disabled"
+        )
+        mock_hass.data[DOMAIN] = {"last_action_result": {"total": 2, "failed": []}}
+
+        await engine._on_soc_below_threshold(25.0, 30.0)
+
+        tier_off = [
+            c
+            for c in mock_hass.services.async_call.call_args_list
+            if c.args[0] == DOMAIN and c.args[1] == "tier_off"
+        ]
+        assert len(tier_off) == 1
+        assert tier_off[0].args[2]["tier"] == LABEL_TIER2
+
+        notify = [
+            c
+            for c in mock_hass.services.async_call.call_args_list
+            if c.args[0] == DOMAIN and c.args[1] == "notify"
+        ]
+        assert len(notify) == 1
+        assert notify[0].args[2]["title"] == "🔋 Low Battery — Tier 2 Off"
