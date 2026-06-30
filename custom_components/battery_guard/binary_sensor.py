@@ -24,11 +24,9 @@ from .const import (
     DOMAIN,
     VERSION,
 )
+from .grid_status import state_indicates_outage
 
 _LOGGER = logging.getLogger(__name__)
-
-# Grid status strings that indicate power outage
-GRID_OFF_STATES = {"off-grid", "disconnected", "off_grid", "off"}
 
 # Voltage threshold in volts — below this on all 3 phases = outage
 VOLTAGE_OUTAGE_THRESHOLD = 50.0
@@ -128,7 +126,7 @@ class PowerOutageGridSensor(BinarySensorEntity):
         if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
             self._attr_is_on = False
             return
-        self._attr_is_on = state.state.lower() in GRID_OFF_STATES
+        self._attr_is_on = state_indicates_outage(state.state)
 
 
 class PowerOutageVoltageSensor(BinarySensorEntity):
