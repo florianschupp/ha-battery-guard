@@ -245,11 +245,7 @@ class SensorHealthMonitor:
         for key, status in self._status.items():
             available = self._source_available(status)
             status["available"] = available
-            if (
-                not available
-                and not status["alerted"]
-                and key not in self._debounce
-            ):
+            if not available and not status["alerted"] and key not in self._debounce:
                 status["alerted"] = True
                 self._notify_unavailable(status)
         self._publish()

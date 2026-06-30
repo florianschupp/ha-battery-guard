@@ -43,8 +43,7 @@ class DeviceConfigStore:
     def has_any_data(self) -> bool:
         """True if either object has been stored (non-empty)."""
         return bool(
-            self._data.get(KEY_DEVICE_ACTIONS)
-            or self._data.get(KEY_RESTORE_CONFIG)
+            self._data.get(KEY_DEVICE_ACTIONS) or self._data.get(KEY_RESTORE_CONFIG)
         )
 
     def get_device_actions(self) -> dict[str, Any]:

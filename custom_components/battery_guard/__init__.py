@@ -223,12 +223,8 @@ async def async_setup_entry(
     # Apply routed backup payloads to the device config store
     if raw_restore_device_config:
         await device_config_store.async_replace_all(
-            device_actions=raw_restore_device_config.get(
-                CONF_DEVICE_ACTIONS
-            ),
-            restore_config=raw_restore_device_config.get(
-                CONF_RESTORE_CONFIG
-            ),
+            device_actions=raw_restore_device_config.get(CONF_DEVICE_ACTIONS),
+            restore_config=raw_restore_device_config.get(CONF_RESTORE_CONFIG),
         )
     if routed_device_actions is not None or routed_restore_config is not None:
         await device_config_store.async_replace_all(

@@ -538,9 +538,7 @@ class BatteryGuardAutomationEngine:
         async with self._operation_lock:
             await self._shed_tier2_locked(current_soc, threshold)
 
-    async def _shed_tier2_locked(
-        self, current_soc: float, threshold: float
-    ) -> None:
+    async def _shed_tier2_locked(self, current_soc: float, threshold: float) -> None:
         """Turn off tier 2, set the disabled flag, and notify.
 
         The caller MUST already hold ``self._operation_lock``. The lock is
