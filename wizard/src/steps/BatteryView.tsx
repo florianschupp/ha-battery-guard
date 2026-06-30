@@ -199,10 +199,20 @@ export function BatteryView() {
     setSaved(false)
     setSaving(true)
     try {
+      // Reconcile: keep only optimization entries whose entity is still bound
+      // as the charge/discharge entity. Drops stale IDs left over from a
+      // previous binding — otherwise the health watchdog keeps monitoring
+      // orphaned entities (e.g. after the Huawei integration is re-added).
+      const boundIds = [chargeEntity, dischargeEntity].filter(Boolean)
+      const nextOpt = {
+        ...batteryOpt,
+        entities: batteryOpt.entities.filter((e) => boundIds.includes(e.entity_id)),
+      }
       await setConfig({
         ...fullConfig.current,
-        battery_optimization: batteryOpt,
+        battery_optimization: nextOpt,
       })
+      setBatteryOpt(nextOpt)
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
@@ -513,8 +523,10 @@ export function BatteryView() {
             </div>
           )}
 
-          {/* Save button */}
-          {batteryOpt.enabled && (() => {
+          {/* Save button — available even when disabled, so the off state
+              (and the entity prune) can be persisted. Hidden while the
+              disclaimer dialog is open to avoid a confusing dual action. */}
+          {hasEntities && !showDisclaimer && (() => {
             const hasOOR = batteryOpt.entities.some((e) => {
               const b = getEntityBounds(e.entity_id, allStates.current)
               if (b.min === undefined || b.max === undefined) return false
