@@ -354,6 +354,19 @@ class BatteryGuardAutomationEngine:
     async def _on_power_outage(self) -> None:
         """Handle power outage: activate emergency mode, tier 1 off, notify."""
         async with self._operation_lock:
+            # Re-entry guard (#45): if an outage is already active, a grid
+            # flicker (off→on within the restore window re-arms the outage
+            # debounce) must NOT re-shed tier 1 or re-send the outage
+            # notification. Gate primarily on the in-process _outage_start_time
+            # (immune to a transient `unavailable` of the active switch — the
+            # weakness _handle_active_change also guards against); the active
+            # switch is a secondary layer that also covers an emergency
+            # restored across a reboot. A genuine new outage runs only after a
+            # completed restore cleared both.
+            if self._outage_start_time is not None or self._get_switch_state("active"):
+                _LOGGER.debug("Outage already active — skipping re-entry")
+                return
+
             _LOGGER.warning("Power outage detected — activating Battery Guard")
             self._outage_start_time = time.monotonic()
 

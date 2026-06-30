@@ -286,6 +286,55 @@ class TestOutageFlow:
         assert len(notify_calls) == 1
         assert notify_calls[0].args[2]["title"] == "⚡ Power Outage Detected"
 
+    @pytest.mark.asyncio
+    async def test_on_power_outage_skips_when_already_active(
+        self, mock_hass, mock_entry
+    ):
+        # Re-entry guard (#45): re-firing while an outage is already in progress
+        # (in-process _outage_start_time set) must NOT re-shed or re-notify.
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._find_entity = MagicMock(return_value=None)
+        engine._outage_start_time = 123.0  # outage already in progress
+        mock_hass.data[DOMAIN] = {"last_action_result": {"total": 1, "failed": []}}
+
+        await engine._on_power_outage()
+
+        mock_hass.services.async_call.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_on_power_outage_skips_when_active_switch_on(
+        self, mock_hass, mock_entry
+    ):
+        # Secondary layer: active switch on (e.g. restored across a reboot)
+        # also blocks re-entry even if _outage_start_time is None.
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._find_entity = MagicMock(return_value=None)
+        engine._outage_start_time = None
+        engine._get_switch_state = MagicMock(return_value=True)
+        mock_hass.data[DOMAIN] = {"last_action_result": {"total": 1, "failed": []}}
+
+        await engine._on_power_outage()
+
+        mock_hass.services.async_call.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_on_power_outage_proceeds_when_not_active(
+        self, mock_hass, mock_entry
+    ):
+        # Counter-case: the guard does NOT over-block a genuine fresh outage.
+        engine = _make_engine(mock_hass, mock_entry)
+        engine._find_entity = MagicMock(return_value=None)
+        engine._outage_start_time = None
+        engine._get_switch_state = MagicMock(return_value=False)
+        mock_hass.data[DOMAIN] = {"last_action_result": {"total": 1, "failed": []}}
+
+        await engine._on_power_outage()
+
+        assert any(
+            c.args[0] == DOMAIN and c.args[1] == "notify"
+            for c in mock_hass.services.async_call.call_args_list
+        )
+
 
 class TestRestoreFlow:
     @pytest.mark.asyncio
