@@ -1,6 +1,6 @@
 # Concept #53 — Level-based SOC evaluation at outage start
 
-Status: Implemented in v2.23.0-rc.1 (concept + code adversarially reviewed; fixes incorporated)
+Status: ✅ Accepted & released in v2.23.0 (2026-06-30).
 Issue: https://github.com/florianschupp/ha-battery-guard/issues/53
 Epic: #52 · split from #49 (the reboot/critical-decoupling parts stay in #49,
 blocked on the 3-state grid signal from #51).

@@ -1,7 +1,7 @@
 # Concept #51 Part A — Off-grid status mapping (safety-first)
 
-Status: Implemented in v2.23.0-rc.2 (concept review caught a substring regression →
-redesigned to normalized exact-match; code review verified against the real Huawei enum)
+Status: ✅ Accepted & released in v2.23.0 (2026-06-30). Live-validated: grid_sensor =
+sensor.wechselrichter_netztrennung_status reads "On-grid" correctly.
 Issue: https://github.com/florianschupp/ha-battery-guard/issues/51 (Part A)
 Epic: #52
 
