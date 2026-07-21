@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "2.24.0"
+VERSION = "2.25.0-rc.1"
 
 # Platforms
 PLATFORMS = [
@@ -62,7 +62,20 @@ RESTORE_DEBOUNCE_SECONDS = 30
 
 # Sensor health watchdog (seconds)
 HEALTH_DEBOUNCE_SECONDS = 60
-HEALTH_STARTUP_GRACE_SECONDS = 60
+# Startup grace raised 60 → 180: the Huawei/Modbus integration can take ~2 min to
+# (re)connect after an HA restart; a shorter grace produced false "unavailable →
+# available again" pairs on every restart (#56).
+HEALTH_STARTUP_GRACE_SECONDS = 180
+# Periodic sweep cadence: the watchdog is actively polling (not only event-driven),
+# because a frozen sensor fires no state-change events (#56).
+HEALTH_SWEEP_SECONDS = 30
+# Freshness: a source that is "available" but has reported no new value for longer than
+# this is treated as frozen/stale. Starting value; refine from real data.
+HEALTH_STALE_SECONDS = 900  # 15 min (X)
+# Flap detection: >= HEALTH_FLAP_THRESHOLD unavailable transitions within
+# HEALTH_FLAP_WINDOW_SECONDS raises one "connection unstable" alert.
+HEALTH_FLAP_WINDOW_SECONDS = 600  # 10 min (W)
+HEALTH_FLAP_THRESHOLD = 3  # N
 
 # hass.data key for the published sensor-health snapshot
 DATA_SENSOR_HEALTH = "sensor_health"

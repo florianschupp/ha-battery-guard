@@ -15,6 +15,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import entity_registry as er
 
@@ -177,12 +178,25 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
         device_actions = _get_device_actions(hass)
         state_store = _get_state_store(hass)
         failed_entities: list[str] = []
+        unreachable_entities: list[str] = []
         action_counts: dict[str, int] = {}
 
         _LOGGER.info("Executing tier %s actions for %d entities", tier, len(entity_ids))
 
         for entity_id in entity_ids:
-            # 1. Save state before any action
+            # Classify from the PRE-state (#56): an entity that is unavailable/unknown
+            # before we act is reported as "unreachable" — Battery Guard cannot confirm
+            # the shed. We still fire the action ONCE (a turn_off on a still-energised
+            # device whose integration merely reports unavailable must be attempted —
+            # no safety inversion), but we skip the retries for it so the shed of the
+            # LIVE devices is not delayed by a retry storm on dead ones.
+            state_obj = hass.states.get(entity_id)
+            pre_unreachable = state_obj is None or state_obj.state in (
+                STATE_UNAVAILABLE,
+                STATE_UNKNOWN,
+            )
+
+            # 1. Save state before any action (no-ops on unavailable entities)
             if state_store:
                 state_store.save_state(entity_id)
 
@@ -190,7 +204,25 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             action_config = _get_action_config(device_actions, entity_id, tier_key)
             action_name = action_config.get("action", "turn_off")
 
-            # 3. Track action type for notification breakdown
+            if pre_unreachable:
+                # Attempt once, no retry, and never count it as shed.
+                try:
+                    await execute_action(hass, entity_id, action_config)
+                except Exception:  # noqa: BLE001 - best-effort on an unreachable device
+                    _LOGGER.debug(
+                        "Best-effort %s on unreachable %s failed",
+                        action_name,
+                        entity_id,
+                    )
+                unreachable_entities.append(entity_id)
+                _LOGGER.warning(
+                    "Tier %s device %s unreachable — shed not confirmed",
+                    tier,
+                    entity_id,
+                )
+                continue
+
+            # 3. Track action type for notification breakdown (shed devices only)
             label = _format_action_label(action_config)
             action_counts[label] = action_counts.get(label, 0) + 1
 
@@ -211,6 +243,7 @@ async def async_setup_services(hass: HomeAssistant, entry: ConfigEntry) -> None:
             "action": "tier_off",
             "total": len(entity_ids),
             "failed": failed_entities,
+            "unreachable": unreachable_entities,
             "action_counts": action_counts,
         }
 

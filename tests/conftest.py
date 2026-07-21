@@ -58,11 +58,31 @@ _ha_helpers_event = MagicMock()
 _ha_helpers.event = _ha_helpers_event
 
 # Util (dt) — used by sensor_health for timestamps
-from datetime import datetime as _datetime, timezone as _timezone  # noqa: E402
+from datetime import (  # noqa: E402
+    datetime as _datetime,
+    timedelta as _timedelta,
+    timezone as _timezone,
+)
+
+
+class _Clock:
+    """Movable test clock backing dt_util.utcnow (the watchdog is time-driven)."""
+
+    def __init__(self) -> None:
+        self.now = _datetime(2026, 1, 1, tzinfo=_timezone.utc)
+
+    def advance(self, seconds: float) -> None:
+        self.now = self.now + _timedelta(seconds=seconds)
+
+    def reset(self) -> None:
+        self.now = _datetime(2026, 1, 1, tzinfo=_timezone.utc)
+
+
+clock = _Clock()
 
 _ha_util = types.ModuleType("homeassistant.util")
 _ha_util_dt = MagicMock()
-_ha_util_dt.utcnow = lambda: _datetime(2026, 1, 1, tzinfo=_timezone.utc)
+_ha_util_dt.utcnow = lambda: clock.now
 _ha_util.dt = _ha_util_dt
 
 _ha_helpers_selector = MagicMock()
@@ -105,11 +125,22 @@ from custom_components.battery_guard.const import (  # noqa: E402
 
 
 class MockState:
-    """Minimal HA State object."""
+    """Minimal HA State object.
 
-    def __init__(self, state: str, attributes: dict[str, Any] | None = None):
+    ``last_reported`` defaults to the current test clock (fresh); pass an older value to
+    simulate a frozen/stale sensor.
+    """
+
+    def __init__(
+        self,
+        state: str,
+        attributes: dict[str, Any] | None = None,
+        last_reported: Any = None,
+    ):
         self.state = state
         self.attributes = attributes or {}
+        self.last_reported = last_reported if last_reported is not None else clock.now
+        self.last_updated = self.last_reported
 
 
 class MockEntityEntry:
@@ -166,9 +197,7 @@ def mock_entry():
 @pytest.fixture
 def state_store(mock_hass):
     """Create a StateStore with mocked hass (no disk persistence)."""
-    with patch(
-        "custom_components.battery_guard.state_store.Store"
-    ) as mock_store_cls:
+    with patch("custom_components.battery_guard.state_store.Store") as mock_store_cls:
         mock_store_instance = MagicMock()
         mock_store_instance.async_load = AsyncMock(return_value=None)
         mock_store_instance.async_save = AsyncMock()
@@ -180,6 +209,10 @@ def state_store(mock_hass):
         return store
 
 
-def make_state(state: str, attributes: dict[str, Any] | None = None) -> MockState:
+def make_state(
+    state: str,
+    attributes: dict[str, Any] | None = None,
+    last_reported: Any = None,
+) -> MockState:
     """Helper to create a MockState."""
-    return MockState(state, attributes or {})
+    return MockState(state, attributes or {}, last_reported)

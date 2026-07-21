@@ -388,13 +388,16 @@ class BatteryGuardAutomationEngine:
             # Check for failures
             result = self.hass.data.get(DOMAIN, {}).get("last_action_result", {})
             failed = result.get("failed", [])
+            unreachable = result.get("unreachable", [])
             total = result.get("total", 0)
             action_counts = result.get("action_counts", {})
 
             soc = self._get_soc_value()
             soc_text = f"Battery: {soc:.0f}%" if soc is not None else ""
 
-            status = self._format_action_result(total, failed, action_counts)
+            status = self._format_action_result(
+                total, failed, action_counts, unreachable
+            )
             message = f"Tier 1: {status}\n{soc_text}"
 
             await self.hass.services.async_call(
@@ -560,6 +563,7 @@ class BatteryGuardAutomationEngine:
         # Check for failures
         result = self.hass.data.get(DOMAIN, {}).get("last_action_result", {})
         failed = result.get("failed", [])
+        unreachable = result.get("unreachable", [])
         total = result.get("total", 0)
         action_counts = result.get("action_counts", {})
 
@@ -573,7 +577,7 @@ class BatteryGuardAutomationEngine:
                 target={"entity_id": tier2_disabled_entity},
             )
 
-        status = self._format_action_result(total, failed, action_counts)
+        status = self._format_action_result(total, failed, action_counts, unreachable)
         message = f"Tier 2: {status}\nBattery: {current_soc:.0f}%"
 
         await self.hass.services.async_call(
@@ -740,14 +744,20 @@ class BatteryGuardAutomationEngine:
         total: int,
         failed: list[str],
         action_counts: dict[str, int] | None = None,
+        unreachable: list[str] | None = None,
     ) -> str:
         """Format action result as ✅/⚠️ status line with action breakdown.
 
+        An ``unreachable`` device was unavailable when Battery Guard tried to shed it,
+        so the shed could not be confirmed — it is NOT counted as success (#56). The ✅
+        line therefore requires both ``failed`` and ``unreachable`` to be empty.
+
         Examples:
             "✅ 6 devices (4× off, 1× HVAC → fan_only, 1× dim → 25%)"
-            "⚠️ 5/6 devices (4× off, 1× HVAC → fan_only)\n  Failed: Heater"
+            "⚠️ 3/6 devices (3× off)\n  Failed: Heater\n  Unreachable: Klima Süd, Boiler"
         """
-        success_count = total - len(failed)
+        unreachable = unreachable or []
+        success_count = total - len(failed) - len(unreachable)
 
         # Action type breakdown
         breakdown = ""
@@ -755,11 +765,13 @@ class BatteryGuardAutomationEngine:
             parts = [f"{count}× {label}" for label, count in action_counts.items()]
             breakdown = f" ({', '.join(parts)})"
 
-        if not failed:
+        if not failed and not unreachable:
             return f"✅ {total} devices{breakdown}"
         lines = [f"⚠️ {success_count}/{total} devices{breakdown}"]
         for eid in failed:
             lines.append(f"  Failed: {self._friendly_name(eid)}")
+        for eid in unreachable:
+            lines.append(f"  Unreachable: {self._friendly_name(eid)}")
         return "\n".join(lines)
 
     @staticmethod

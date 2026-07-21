@@ -67,9 +67,7 @@ class TestDomainAttributes:
         assert saved["attributes"]["temperature"] == 22.0
         assert saved["attributes"]["fan_mode"] == "auto"
 
-    def test_save_light_captures_brightness_and_color(
-        self, state_store, mock_hass
-    ):
+    def test_save_light_captures_brightness_and_color(self, state_store, mock_hass):
         mock_hass.states.get.return_value = make_state(
             "on",
             {"brightness": 200, "color_temp": 350},

@@ -87,6 +87,29 @@ class TestFormatActionResult:
         assert "✅ 3 devices" in result
         assert "(" not in result
 
+    def test_unreachable_is_not_counted_as_success(self, mock_hass, mock_entry):
+        # AC6 correctness hinge (#56): an outage where 2 of 6 devices were unreachable
+        # and 0 failed must NOT print a green all-good line.
+        engine = _make_engine(mock_hass, mock_entry)
+        mock_hass.states.get.return_value = make_state(
+            "unavailable", {"friendly_name": "Klima Süd"}
+        )
+        result = engine._format_action_result(
+            6, [], {"off": 4}, ["switch.klima", "switch.boiler"]
+        )
+        assert "✅" not in result
+        assert "⚠️" in result
+        assert "4/6" in result  # 6 total - 0 failed - 2 unreachable = 4 shed
+        assert "Unreachable" in result
+
+    def test_unreachable_and_failed_both_listed(self, mock_hass, mock_entry):
+        engine = _make_engine(mock_hass, mock_entry)
+        mock_hass.states.get.return_value = make_state("on", {"friendly_name": "Dev"})
+        result = engine._format_action_result(5, ["switch.f"], {"off": 3}, ["switch.u"])
+        assert "3/5" in result  # 5 - 1 failed - 1 unreachable = 3
+        assert "Failed" in result
+        assert "Unreachable" in result
+
 
 class TestFriendlyName:
     def test_returns_attribute(self, mock_hass, mock_entry):
@@ -363,7 +386,9 @@ class TestRestoreFlow:
             "last_action_result": {"total": 0, "failed": []},
         }
 
-        with patch("custom_components.battery_guard.automation_engine.time") as mock_time:
+        with patch(
+            "custom_components.battery_guard.automation_engine.time"
+        ) as mock_time:
             mock_time.monotonic.return_value = 4600.0  # 1 hour later
             await engine._on_grid_restored()
 
@@ -393,7 +418,9 @@ class TestRestoreFlow:
 class TestLevelBasedOutageStart:
     """Issue #53 — outage that begins ALREADY below the thresholds."""
 
-    def _setup(self, engine, mock_hass, *, soc, tier2_disabled=False, critical=10, t2=30):
+    def _setup(
+        self, engine, mock_hass, *, soc, tier2_disabled=False, critical=10, t2=30
+    ):
         engine._find_entity = MagicMock(return_value=None)
         mock_hass.data[DOMAIN] = {"last_action_result": {"total": 1, "failed": []}}
         engine._shed_tier2_locked = AsyncMock()
