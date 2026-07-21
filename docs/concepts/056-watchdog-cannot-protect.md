@@ -1,6 +1,6 @@
 # Concept #56 — Detect and report when Battery Guard cannot protect
 
-Status: 🚧 In progress (Phase 1). AK confirmed by operator 2026-07-20.
+Status: ✅ Accepted & released in v2.25.0 (2026-07-21).
 Issue: https://github.com/florianschupp/ha-battery-guard/issues/56
 Epic: #52 · precedes #58 (which reuses the periodic sweep introduced here) · UI in #57.
 
@@ -253,13 +253,22 @@ Consciously accepted (documented, no change):
 - Smoke test on the live install: no false alarms in the 180 s after a restart; disabling
   a source entity produces a dead/stale alert after the debounce.
 
-## 8. Acceptance criteria
+## 8. Acceptance criteria — ✅ all accepted 2026-07-21
 
-1. **Dead:** source continuously unavailable beyond the threshold → one notification.
-2. **Frozen:** no fresh value for > X min while nominally "available" → notification.
-3. **Flapping:** ≥ N dropouts within window W → one "connection unstable" notification.
-4. **No spam / recovery / no startup false alarms** (grace 180 s).
-5. **Control path:** a tier-1/2 device unavailable beyond the threshold → notification
-   that it cannot be shed during an outage.
-6. **Shedding report:** the shed notification distinguishes shed / unreachable / failed,
-   with no false success.
+1. ✅ **Dead:** source continuously unavailable beyond the threshold → one notification.
+   *Live-verified:* Huawei integration disabled 16:57:22 → 4 pushes at ~16:59 (one per
+   source, each naming role + entity), i.e. ~90 s = 60 s debounce + sweep granularity.
+2. ✅ **Frozen:** no fresh value for > X min while nominally "available" → notification.
+   *Covered by tests + adversarial reviews* (freshness scoped to grid/SOC only).
+3. ✅ **Flapping:** ≥ N dropouts within window W → one "connection unstable" notification.
+   *Covered by tests* incl. the 3-phase single-edge regression.
+4. ✅ **No spam / recovery / no startup false alarms** (grace 180 s).
+   *Live-verified twice:* no alarms in the first minutes after the HA restart, and no
+   premature alert at 45 s into the induced outage (debounce working).
+5. ✅ **Control path:** a tier-1/2 device unavailable beyond the threshold → notification
+   that it cannot be shed during an outage. *Covered by the TestControlPath suite.*
+6. ✅ **Shedding report:** the shed notification distinguishes shed / unreachable /
+   failed, with no false success. *Covered by handler + formatter tests.*
+
+**Recovery** additionally live-verified: all 4 sources sent "✅ … is available again"
+after the integration was re-enabled — 4 down, 4 up, none swallowed, none duplicated.
