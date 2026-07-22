@@ -24,6 +24,7 @@ _ha_const.STATE_OFF = "off"
 _ha_const.STATE_ON = "on"
 _ha_const.STATE_UNAVAILABLE = "unavailable"
 _ha_const.STATE_UNKNOWN = "unknown"
+_ha_const.EVENT_HOMEASSISTANT_STARTED = "homeassistant_started"
 
 # Platform enum mock
 _platform = MagicMock()
@@ -116,12 +117,18 @@ from custom_components.battery_guard.const import (  # noqa: E402
     CONF_BATTERY_OPTIMIZATION,
     CONF_CRITICAL_SOC,
     CONF_DEVICE_ACTIONS,
+    CONF_GRID_SENSOR,
     CONF_RESTORE_CONFIG,
     CONF_SOC_SENSOR,
+    CONF_USE_VOLTAGE,
     DEFAULT_BATTERY_OPTIMIZATION,
     DEFAULT_RESTORE_CONFIG,
     DOMAIN,
 )
+
+
+# Raw grid-status source used by the default mock config entry (#70).
+GRID_SENSOR_ENTITY = "sensor.grid_status"
 
 
 class MockState:
@@ -186,6 +193,8 @@ def mock_entry():
         CONF_SOC_SENSOR: "sensor.battery_soc",
         CONF_CRITICAL_SOC: 10,
         CONF_BATTERY_OPTIMIZATION: DEFAULT_BATTERY_OPTIMIZATION,
+        CONF_USE_VOLTAGE: False,
+        CONF_GRID_SENSOR: GRID_SENSOR_ENTITY,
     }
     entry.options = {
         CONF_DEVICE_ACTIONS: {},

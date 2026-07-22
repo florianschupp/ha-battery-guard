@@ -33,7 +33,12 @@ from homeassistant.helpers.event import (
 from .const import (
     CONF_BATTERY_OPTIMIZATION,
     CONF_CRITICAL_SOC,
+    CONF_GRID_SENSOR,
     CONF_SOC_SENSOR,
+    CONF_USE_VOLTAGE,
+    CONF_VOLTAGE_PHASE_A,
+    CONF_VOLTAGE_PHASE_B,
+    CONF_VOLTAGE_PHASE_C,
     DEFAULT_BATTERY_OPTIMIZATION,
     DEFAULT_CRITICAL_SOC,
     DOMAIN,
@@ -42,6 +47,16 @@ from .const import (
     LABEL_TIER3,
     OUTAGE_DEBOUNCE_SECONDS,
     RESTORE_DEBOUNCE_SECONDS,
+    RESTORE_STARTUP_GRACE_SECONDS,
+    RESTORE_SUSPENDED_RENOTIFY_SECONDS,
+    VOLTAGE_OUTAGE_THRESHOLD,
+)
+from .grid_status import (
+    GRID_OFF,
+    GRID_ON,
+    GRID_UNKNOWN,
+    classify_grid_status,
+    classify_grid_voltage,
 )
 from .labels import resolve_label_id
 
@@ -67,6 +82,21 @@ class BatteryGuardAutomationEngine:
         # Guards against duplicate critical-SOC alarms within one emergency;
         # reset when the 'active' switch turns off (see _handle_active_change).
         self._critical_alerted: bool = False
+        # #70: the CAUSE we last reported as blocking a restore. Keyed on the
+        # classification signature, never on the displayed reading: in voltage
+        # mode the reading contains live floats that change on every poll, which
+        # would turn "one notice per cause" into one push per second.
+        self._restore_suspended_cause: tuple[str, ...] | None = None
+        self._restore_suspended_notified_at: float | None = None
+        # Resolved lazily, re-resolved when it goes stale (an entity rename would
+        # otherwise silently kill the catch-up path).
+        self._active_entity_id: str | None = None
+        # Raw-source evaluation is suppressed until this monotonic deadline —
+        # see RESTORE_STARTUP_GRACE_SECONDS.
+        self._grace_expires_at: float | None = None
+        self._grace_handle: CALLBACK_TYPE | None = None
+        # Guards the window between restore_all and the end of _on_grid_restored.
+        self._restore_in_progress: bool = False
 
     async def async_start(self) -> None:
         """Start all event listeners."""
@@ -115,6 +145,7 @@ class BatteryGuardAutomationEngine:
         # whenever emergency mode ends (covers the grid-restored event AND a
         # manual restore_all, which both turn this switch off).
         active_entity = self._find_entity("active")
+        self._active_entity_id = active_entity
         if active_entity:
             self._unsub_listeners.append(
                 async_track_state_change_event(
@@ -123,6 +154,36 @@ class BatteryGuardAutomationEngine:
                     self._handle_active_change,
                 )
             )
+
+        # #70: listen to the RAW grid source(s), not only to our own binary
+        # sensor. If the source comes back already reading on-grid, the binary
+        # sensor never transitions (it is already `off`) and the restore path
+        # would never run — devices would stay shed indefinitely.
+        raw_sources = self._raw_grid_sources()
+        if raw_sources:
+            self._unsub_listeners.append(
+                async_track_state_change_event(
+                    self.hass,
+                    raw_sources,
+                    self._handle_grid_source_change,
+                )
+            )
+            _LOGGER.debug("Listening to raw grid source(s): %s", raw_sources)
+        else:
+            _LOGGER.warning(
+                "No raw grid source configured — automatic restore is disabled "
+                "(a restore then requires the restore_all service)"
+            )
+
+        # Startup grace, then exactly one evaluation. The timer is what covers an
+        # outage that ended while HA was down: the source then comes back ALREADY
+        # reading on-grid, so no state change will ever arrive to trigger us.
+        # Waiting out the grace first is what keeps a stale Modbus value from
+        # restoring every shed load onto the island battery.
+        self._grace_expires_at = time.monotonic() + RESTORE_STARTUP_GRACE_SECONDS
+        self._grace_handle = async_call_later(
+            self.hass, RESTORE_STARTUP_GRACE_SECONDS, self._startup_grace_expired
+        )
 
     async def async_stop(self) -> None:
         """Stop all event listeners and cancel pending debounce timers."""
@@ -133,6 +194,9 @@ class BatteryGuardAutomationEngine:
         if self._restore_debounce_handle:
             self._restore_debounce_handle()
             self._restore_debounce_handle = None
+        if self._grace_handle:
+            self._grace_handle()
+            self._grace_handle = None
         for unsub in self._unsub_listeners:
             unsub()
         self._unsub_listeners.clear()
@@ -172,7 +236,7 @@ class BatteryGuardAutomationEngine:
 
     @callback
     def _handle_active_change(self, event: Event) -> None:
-        """Re-arm the critical-SOC alarm guard when emergency mode ends.
+        """Reset per-emergency guards when emergency mode ends.
 
         Only a genuine OFF transition counts — a transient `unavailable`/
         `unknown` of the switch must NOT re-arm mid-emergency (would allow
@@ -181,6 +245,207 @@ class BatteryGuardAutomationEngine:
         new_state = event.data.get("new_state")
         if new_state is not None and new_state.state == STATE_OFF:
             self._critical_alerted = False
+            self._restore_suspended_cause = None
+            self._restore_suspended_notified_at = None
+            # The emergency is over by every definition the engine has — clear the
+            # re-entry guard too. Without this, a MANUAL restore_all (the documented
+            # escape hatch when a restore is suspended) leaves _outage_start_time
+            # set, and _on_power_outage then silently skips the NEXT real outage:
+            # no tier-1 shed, no notification, nothing above DEBUG in the log.
+            self._outage_start_time = None
+
+    # =========================================================================
+    # #70: positively confirmed on-grid before any automatic restore
+    # =========================================================================
+    def _raw_grid_sources(self) -> list[str]:
+        """The configured RAW grid source entity_ids.
+
+        In voltage mode this is all-or-nothing: with a phase missing from the
+        config, a restore could be authorised from two phases while the third is
+        unknown. An incomplete config yields no sources, hence UNKNOWN, hence no
+        automatic restore.
+        """
+        data = self.entry.data
+        if data.get(CONF_USE_VOLTAGE, False):
+            keys = (CONF_VOLTAGE_PHASE_A, CONF_VOLTAGE_PHASE_B, CONF_VOLTAGE_PHASE_C)
+            phases = [data.get(key, "") for key in keys]
+            return phases if all(phases) else []
+        grid = data.get(CONF_GRID_SENSOR, "")
+        return [grid] if grid else []
+
+    def _grid_state(self) -> str:
+        """Derive a real 3-state grid signal from the RAW source(s).
+
+        The binary sensor cannot answer this: it collapses `unavailable` to
+        "no outage" (correct for detection — a comms loss must never shed —
+        but it would mean "switch everything back on" here). So the engine
+        reads the raw source itself. The binary sensor stays untouched.
+        """
+        raws: list[str | None] = []
+        for entity_id in self._raw_grid_sources():
+            state = self.hass.states.get(entity_id)
+            raws.append(state.state if state is not None else None)
+
+        if self.entry.data.get(CONF_USE_VOLTAGE, False):
+            return classify_grid_voltage(raws, VOLTAGE_OUTAGE_THRESHOLD)
+        if not raws:
+            return GRID_UNKNOWN
+        return classify_grid_status(raws[0])
+
+    def _raw_grid_values(self) -> str:
+        """Human-readable raw source value(s) for the suspension notice."""
+        parts: list[str] = []
+        for entity_id in self._raw_grid_sources():
+            state = self.hass.states.get(entity_id)
+            parts.append(state.state if state is not None else "entity not found")
+        return " / ".join(parts) if parts else "no grid source configured"
+
+    def _suspension_cause(self) -> tuple[str, ...]:
+        """A stable identity for WHY the restore is blocked.
+
+        Must not contain live readings. In voltage mode the displayed value
+        carries three floats that change on every poll — deduplicating on those
+        would send one push per measurement, drowning the alert channel that also
+        carries the critical-SOC alarm.
+        """
+        sources = self._raw_grid_sources()
+        if not sources:
+            return ("unconfigured",)
+
+        voltage_mode = self.entry.data.get(CONF_USE_VOLTAGE, False)
+        tokens: list[str] = []
+        for entity_id in sources:
+            state = self.hass.states.get(entity_id)
+            if state is None:
+                tokens.append(f"{entity_id}=missing")
+                continue
+            normalized = state.state.strip().lower()
+            if normalized in ("", STATE_UNAVAILABLE, STATE_UNKNOWN):
+                tokens.append(f"{entity_id}={normalized or 'empty'}")
+            elif voltage_mode:
+                # Bucket the reading, never the number itself.
+                try:
+                    volts = float(normalized)
+                except (ValueError, TypeError):
+                    tokens.append(f"{entity_id}=not-a-number")
+                else:
+                    below = volts < VOLTAGE_OUTAGE_THRESHOLD
+                    tokens.append(f"{entity_id}={'below' if below else 'above'}")
+            else:
+                # A status source's distinct strings ARE distinct causes.
+                tokens.append(f"{entity_id}={normalized}")
+        return tuple(tokens)
+
+    def _emergency_active(self) -> bool:
+        """Is emergency mode on? Caches the entity_id (hot path, see listener)."""
+        if not self._active_entity_id:
+            self._active_entity_id = self._find_entity("active")
+        if not self._active_entity_id:
+            return False
+        state = self.hass.states.get(self._active_entity_id)
+        if state is None:
+            # Stale cache (entity renamed) — re-resolve rather than silently
+            # reporting "no emergency", which would kill the catch-up path.
+            self._active_entity_id = self._find_entity("active")
+            if not self._active_entity_id:
+                return False
+            state = self.hass.states.get(self._active_entity_id)
+        return state is not None and state.state == STATE_ON
+
+    def _claim_suspension_notice(self) -> str | None:
+        """Return the message to send, or None if this cause was already reported.
+
+        Two layers: same cause → never repeat within one emergency; changed cause
+        → repeat, but never more often than RESTORE_SUSPENDED_RENOTIFY_SECONDS.
+        """
+        cause = self._suspension_cause()
+        raw = self._raw_grid_values()
+        if cause == self._restore_suspended_cause:
+            _LOGGER.debug("Restore still suspended (%s)", raw)
+            return None
+
+        now = time.monotonic()
+        last = self._restore_suspended_notified_at
+        if last is not None and now - last < RESTORE_SUSPENDED_RENOTIFY_SECONDS:
+            # Deliberately do NOT store the cause: it stays un-reported and will
+            # be sent once the window opens, instead of being lost.
+            _LOGGER.debug("Restore suspension cause changed (%s) — rate limited", raw)
+            return None
+
+        self._restore_suspended_cause = cause
+        self._restore_suspended_notified_at = now
+        _LOGGER.warning("Restore suspended — grid state not confirmed (%s)", raw)
+        return (
+            f"Grid state could not be confirmed (source reports: {raw}). "
+            "Devices stay shed until a confirmed on-grid reading arrives."
+        )
+
+    @staticmethod
+    def _suspension_payload(message: str) -> dict[str, Any]:
+        return {
+            "title": "⏸️ Battery Guard: restore suspended",
+            "message": message,
+            "critical": False,
+        }
+
+    @callback
+    def _notify_restore_suspended(self) -> None:
+        """Fire-and-forget variant for the synchronous listener path."""
+        message = self._claim_suspension_notice()
+        if message is None:
+            return
+        self.hass.async_create_task(
+            self.hass.services.async_call(
+                DOMAIN, "notify", self._suspension_payload(message), blocking=False
+            )
+        )
+
+    @callback
+    def _startup_grace_expired(self, _now: Any) -> None:
+        """Startup grace is over — the raw source is now trustworthy."""
+        self._grace_handle = None
+        self._grace_expires_at = None
+        self._evaluate_grid_source()
+
+    @callback
+    def _handle_grid_source_change(self, _event: Event) -> None:
+        """Raw grid source changed — may need to catch up on a missed restore."""
+        self._evaluate_grid_source()
+
+    @callback
+    def _evaluate_grid_source(self) -> None:
+        """Arm the restore check when the raw source positively confirms on-grid.
+
+        Needed because a source that returns *already reading* on-grid produces
+        NO binary-sensor transition (the sensor is already `off`), so the normal
+        restore path would never run and devices would stay shed forever.
+        """
+        if self._grace_expires_at is not None:
+            if time.monotonic() < self._grace_expires_at:
+                return
+            self._grace_expires_at = None
+        # Cheap first: a restore is already pending — arm-if-idle, never
+        # cancel-and-re-arm (three polling voltage sensors would otherwise reset
+        # the stability window forever and the restore would never fire).
+        if self._restore_debounce_handle is not None or self._restore_in_progress:
+            return
+        if not self._emergency_active():
+            return
+
+        grid = self._grid_state()
+        if grid == GRID_UNKNOWN:
+            self._notify_restore_suspended()
+            return
+        if grid == GRID_OFF:
+            return  # genuine ongoing outage — nothing to report
+
+        _LOGGER.info(
+            "Raw grid source confirms on-grid — waiting %ds before restore",
+            RESTORE_DEBOUNCE_SECONDS,
+        )
+        self._restore_debounce_handle = async_call_later(
+            self.hass, RESTORE_DEBOUNCE_SECONDS, self._restore_debounce_fired
+        )
 
     # =========================================================================
     # 1 & 3: Power Outage / Grid Restored
@@ -435,46 +700,80 @@ class BatteryGuardAutomationEngine:
             if not self._get_switch_state("active"):
                 return
 
+            # #70: restoring requires a POSITIVELY confirmed on-grid reading of
+            # the raw source — never merely the absence of an outage signal.
+            # The binary sensor collapses a dead source to "no outage", which
+            # here would mean "switch every shed load back on mid-outage".
+            # Re-evaluated now (not when the debounce was armed), so a
+            # transient on-grid reading is rejected at fire time.
+            grid = self._grid_state()
+            if grid != GRID_ON:
+                if grid == GRID_UNKNOWN:
+                    message = self._claim_suspension_notice()
+                    if message is not None:
+                        # Awaited, unlike the listener path: this is the only
+                        # signal the operator gets, and a lost task would make
+                        # the suspension as silent as the bug it replaces.
+                        await self.hass.services.async_call(
+                            DOMAIN,
+                            "notify",
+                            self._suspension_payload(message),
+                            blocking=True,
+                        )
+                else:
+                    _LOGGER.warning(
+                        "Grid source still reports off-grid — restore suspended"
+                    )
+                return
+
             _LOGGER.info("Grid power restored — resetting Battery Guard")
 
-            await self.hass.services.async_call(
-                DOMAIN, "restore_all", {}, blocking=True
-            )
+            # Read before restore_all: it turns the `active` switch off, and the
+            # resulting state event clears _outage_start_time (see
+            # _handle_active_change) while we are still awaiting.
+            outage_start = self._outage_start_time
+            self._restore_in_progress = True
+            try:
+                await self.hass.services.async_call(
+                    DOMAIN, "restore_all", {}, blocking=True
+                )
 
-            # Restore battery optimization (normal values)
-            await self._apply_battery_optimization("normal")
+                # Restore battery optimization (normal values)
+                await self._apply_battery_optimization("normal")
 
-            # Check for failures from restore
-            result = self.hass.data.get(DOMAIN, {}).get("last_action_result", {})
-            failed = result.get("failed", [])
+                # Check for failures from restore
+                result = self.hass.data.get(DOMAIN, {}).get("last_action_result", {})
+                failed = result.get("failed", [])
 
-            soc = self._get_soc_value()
-            soc_text = f"Battery: {soc:.0f}%" if soc is not None else ""
+                soc = self._get_soc_value()
+                soc_text = f"Battery: {soc:.0f}%" if soc is not None else ""
 
-            # Calculate outage duration
-            duration_text = ""
-            if self._outage_start_time is not None:
-                elapsed = time.monotonic() - self._outage_start_time
-                duration_text = f"Outage duration: {self._format_duration(elapsed)}"
+                # Calculate outage duration
+                duration_text = ""
+                if outage_start is not None:
+                    elapsed = time.monotonic() - outage_start
+                    duration_text = f"Outage duration: {self._format_duration(elapsed)}"
                 self._outage_start_time = None
 
-            action_counts = result.get("action_counts", {})
-            status = self._format_action_result(
-                result.get("total", 0), failed, action_counts
-            )
-            parts = [status, soc_text, duration_text]
-            message = "\n".join(p for p in parts if p)
+                action_counts = result.get("action_counts", {})
+                status = self._format_action_result(
+                    result.get("total", 0), failed, action_counts
+                )
+                parts = [status, soc_text, duration_text]
+                message = "\n".join(p for p in parts if p)
 
-            await self.hass.services.async_call(
-                DOMAIN,
-                "notify",
-                {
-                    "title": "✅ Grid Power Restored",
-                    "message": message,
-                    "critical": False,
-                },
-                blocking=True,
-            )
+                await self.hass.services.async_call(
+                    DOMAIN,
+                    "notify",
+                    {
+                        "title": "✅ Grid Power Restored",
+                        "message": message,
+                        "critical": False,
+                    },
+                    blocking=True,
+                )
+            finally:
+                self._restore_in_progress = False
 
     # =========================================================================
     # 2, 4, 5: SOC Threshold Events

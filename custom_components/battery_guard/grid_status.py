@@ -36,3 +36,85 @@ def state_indicates_outage(raw: str | None) -> bool:
     treated as NOT an outage.
     """
     return (raw or "").strip().lower() in GRID_OFF_STATES
+
+
+# ---------------------------------------------------------------------------
+# 3-state classification (#70)
+#
+# Detection (above) may only ever answer "is this positively off-grid?", because
+# a comms loss must never cause shedding. Deciding to RESTORE needs the opposite
+# guarantee: a positively confirmed ON-grid reading. "Not off-grid" is NOT good
+# enough there — an unrecognised value or a dead source would otherwise be read
+# as "grid is back" and switch every shed load on mid-outage.
+# ---------------------------------------------------------------------------
+
+GRID_ON = "on"
+GRID_OFF = "off"
+GRID_UNKNOWN = "unknown"
+
+# Normalized values that POSITIVELY indicate on-grid. A bare "on" is
+# deliberately NOT included: the configured source may be a binary_sensor or
+# input_boolean, where "on" is as likely to mean "outage present" as "grid
+# present" — admitting it could invert the meaning.
+GRID_ON_STATES: frozenset[str] = frozenset(
+    {
+        "on-grid",
+        "on_grid",
+        "ongrid",
+        "on grid",
+        "grid connected",
+    }
+)
+
+_UNKNOWN_RAW: frozenset[str] = frozenset({"", "unavailable", "unknown"})
+
+
+def classify_grid_status(raw: str | None) -> str:
+    """Classify a grid-status sensor value as ON / OFF / UNKNOWN.
+
+    Anything that is neither a recognised off-grid nor a recognised on-grid
+    value is UNKNOWN — never ON. That is the whole point: restoring requires a
+    positive confirmation, not the absence of an outage signal.
+    """
+    if raw is None:
+        return GRID_UNKNOWN
+    normalized = raw.strip().lower()
+    if normalized in _UNKNOWN_RAW:
+        return GRID_UNKNOWN
+    if normalized in GRID_OFF_STATES:
+        return GRID_OFF
+    if normalized in GRID_ON_STATES:
+        return GRID_ON
+    return GRID_UNKNOWN
+
+
+def classify_grid_voltage(raw_phases: list[str | None], threshold: float) -> str:
+    """Classify the three phase voltages as ON / OFF / UNKNOWN.
+
+    ON requires **all** phases to be readable and above the threshold — a
+    positive measurement, symmetric to ``classify_grid_status``. A mixed result
+    (some above, some below) is UNKNOWN, which also means a single-phase outage
+    can never authorise a restore.
+
+    Empty input is UNKNOWN rather than falling into the ``all([])`` vacuum
+    truth, which would otherwise read as OFF.
+    """
+    if not raw_phases:
+        return GRID_UNKNOWN
+
+    voltages: list[float] = []
+    for raw in raw_phases:
+        if raw is None:
+            return GRID_UNKNOWN
+        if raw.strip().lower() in _UNKNOWN_RAW:
+            return GRID_UNKNOWN
+        try:
+            voltages.append(float(raw))
+        except (ValueError, TypeError):
+            return GRID_UNKNOWN
+
+    if all(v < threshold for v in voltages):
+        return GRID_OFF
+    if all(v >= threshold for v in voltages):
+        return GRID_ON
+    return GRID_UNKNOWN

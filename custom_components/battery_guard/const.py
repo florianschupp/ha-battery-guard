@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.const import Platform
 
 DOMAIN = "battery_guard"
-VERSION = "2.25.0"
+VERSION = "2.26.0-rc.1"
 
 # Platforms
 PLATFORMS = [
@@ -59,6 +59,22 @@ TRACKED_DOMAINS = ["switch", "input_boolean", "climate", "light", "media_player"
 # Debounce timers (seconds)
 OUTAGE_DEBOUNCE_SECONDS = 5
 RESTORE_DEBOUNCE_SECONDS = 30
+
+# Phase voltage below this counts as "no mains" on that phase. Lives here so the
+# detection (binary_sensor) and the restore gate (automation_engine via
+# grid_status) share ONE definition (#70).
+VOLTAGE_OUTAGE_THRESHOLD = 50.0
+
+# #70 restore gate — after (re)start, the raw grid source is ignored for this long.
+# Same reason as HEALTH_STARTUP_GRACE_SECONDS: the Huawei/Modbus integration needs
+# up to ~2 min to reconnect and may serve a stale value in between. Acting on that
+# value would restore every shed load onto the island battery. Deliberately NOT
+# EVENT_HOMEASSISTANT_STARTED — that fires within seconds of setup, long before
+# Modbus is back.
+RESTORE_STARTUP_GRACE_SECONDS = 180
+# Hard floor between two "restore suspended" notices, even when the cause changed.
+# Bounds the alert channel that also carries the critical-SOC alarm.
+RESTORE_SUSPENDED_RENOTIFY_SECONDS = 900  # 15 min
 
 # Sensor health watchdog (seconds)
 HEALTH_DEBOUNCE_SECONDS = 60

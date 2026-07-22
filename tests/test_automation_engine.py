@@ -16,7 +16,14 @@ from custom_components.battery_guard.const import (
     LABEL_TIER1,
     LABEL_TIER2,
 )
-from tests.conftest import MockState, make_state
+from tests.conftest import GRID_SENSOR_ENTITY, MockState, make_state
+
+
+def _confirm_on_grid(mock_hass, value="on-grid"):
+    """Make the raw grid source report a positively confirmed on-grid value (#70)."""
+    mock_hass.states.get = MagicMock(
+        side_effect=lambda eid: make_state(value) if eid == GRID_SENSOR_ENTITY else None
+    )
 
 
 def _make_engine(mock_hass, mock_entry):
@@ -364,6 +371,7 @@ class TestRestoreFlow:
     async def test_on_grid_restored_calls_restore_all(self, mock_hass, mock_entry):
         engine = _make_engine(mock_hass, mock_entry)
         engine._get_switch_state = MagicMock(return_value=True)
+        _confirm_on_grid(mock_hass)
         mock_hass.data[DOMAIN] = {
             "last_action_result": {"total": 5, "failed": []},
         }
@@ -381,6 +389,7 @@ class TestRestoreFlow:
     async def test_on_grid_restored_calculates_duration(self, mock_hass, mock_entry):
         engine = _make_engine(mock_hass, mock_entry)
         engine._get_switch_state = MagicMock(return_value=True)
+        _confirm_on_grid(mock_hass)
         engine._outage_start_time = 1000.0
         mock_hass.data[DOMAIN] = {
             "last_action_result": {"total": 0, "failed": []},

@@ -23,13 +23,11 @@ from .const import (
     CONF_VOLTAGE_PHASE_C,
     DOMAIN,
     VERSION,
+    VOLTAGE_OUTAGE_THRESHOLD,
 )
 from .grid_status import state_indicates_outage
 
 _LOGGER = logging.getLogger(__name__)
-
-# Voltage threshold in volts — below this on all 3 phases = outage
-VOLTAGE_OUTAGE_THRESHOLD = 50.0
 
 
 async def async_setup_entry(

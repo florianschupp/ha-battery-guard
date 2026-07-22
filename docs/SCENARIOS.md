@@ -85,7 +85,8 @@ Target audience: end users and developers.
 | Phase | What happens |
 |-------|-------------|
 | Grid returns | Restore debounce starts (30s) |
-| 30 seconds stable | Staged restore begins |
+| 30 seconds stable | Grid state re-checked — must POSITIVELY read on-grid (#70) |
+| Confirmed on-grid | Staged restore begins |
 | Tier 3 restored | Immediately (delay: 0s, device gap: 2s) |
 | Tier 2 restored | After 30s tier delay (device gap: 5s) |
 | Tier 1 restored | After 60s tier delay (device gap: 10s) |
@@ -95,6 +96,8 @@ Target audience: end users and developers.
 
 **Why staged?** Prevents power spike from all devices turning on simultaneously.
 **Stay-off list:** Devices configured as "stay off" are never restored.
+**Why re-checked at the end?** The check runs when the debounce *fires*, not when it was
+armed — so a grid that only flickered on is rejected. See S13.
 
 ---
 
@@ -142,7 +145,19 @@ Target audience: end users and developers.
 | State recovery | Saved device states loaded from disk (`.storage/battery_guard.state_store`) |
 | Emergency mode | `active` switch state persists |
 | SOC monitoring | Resumes automatically |
+| Startup grace | The grid source is ignored for 3 min (#70) |
+| Outage ended while HA was down | After the grace, the grid source is evaluated once — no state change is needed |
 | Result | Outage handling continues seamlessly |
+
+**Why the extra evaluation?** If the grid returns while HA is down, the source comes back
+*already* reading on-grid. The outage sensor therefore never transitions, and without this
+one-shot check the shed devices would stay off until the next outage.
+
+**Why wait 3 minutes first?** The Modbus connection to the Huawei inverter takes up to
+~2 min to re-establish. A value read before that can be stale — and restoring on a stale
+"On-grid" would put the full house load back onto the island battery mid-outage. The
+3 min are the same reason `HEALTH_STARTUP_GRACE_SECONDS` exists. `EVENT_HOMEASSISTANT_STARTED`
+is deliberately *not* used: it fires within seconds of setup, long before Modbus is back.
 
 ---
 
@@ -169,6 +184,32 @@ Target audience: end users and developers.
 
 ---
 
+### S13: Grid State Cannot Be Confirmed During an Outage
+
+The grid sensor dies mid-outage (Modbus/WiFi loss), or reports a value Battery Guard
+does not recognize as on-grid.
+
+| Phase | What happens |
+|-------|-------------|
+| Outage active, devices shed | Emergency mode ON |
+| Grid source becomes `unavailable` | Outage sensor flips to "no outage" (a comms loss must never shed — S-safe by design) |
+| Restore debounce fires | Grid state is UNKNOWN, not ON → **restore suspended** |
+| Notification | "⏸️ Restore suspended — grid state could not be confirmed (source reports: unavailable)" |
+| Devices | Stay shed — battery is protected |
+| Repeat notifications | Only when the *cause* changes (a phase-voltage reading changing on every poll is the same cause), and at most every 15 min |
+| Source recovers with on-grid | Restore is armed automatically, normal S6 flow |
+| Manual override | `battery_guard.restore_all` service — this also clears the outage re-entry guard, so the next outage is handled normally |
+
+**Why not just restore?** "The sensor no longer says off-grid" is indistinguishable from
+"the sensor is dead". Restoring on that signal would switch every shed device back on in
+the middle of a real outage and drain the battery.
+
+**Trade-off (accepted):** a grid sensor whose on-grid value is not in the allow-list keeps
+the system shed until it is added or `restore_all` is called — visible and recoverable,
+unlike the silent alternative.
+
+---
+
 ## Known Limitations
 
 ### L1: Partial Phase Loss (2 of 3 Phases Down)
@@ -176,6 +217,7 @@ Target audience: end users and developers.
 | Issue | Only detects outage when ALL 3 voltage phases drop below 50V |
 |-------|-------------|
 | Impact | Single-phase or two-phase outages are not detected via voltage monitoring |
+| Since #70 | A partial reading no longer *authorizes a restore* either: 2-of-3 phases back is UNKNOWN, not "grid restored" — so a partial return during an outage keeps devices shed instead of restoring them onto a half-dead grid |
 | Workaround | Use the grid sensor (Huawei inverter status) as primary detection — it detects all outage types |
 | Design reason | Prevents false positives from single-phase measurement errors |
 
@@ -221,14 +263,19 @@ Target audience: end users and developers.
 
 ---
 
-### L6: Grid Sensor State Matching
+### L6: Grid Sensor State Matching (Allow-Lists)
 
-| Issue | Grid sensor state matching is case-sensitive and limited |
+Matching is normalized (trim + lowercase) but deliberately **exact** — never a substring
+search, because `off-grid` also appears in config labels like "Off-grid switch disabled".
+
+| Aspect | Detail |
 |-------|-------------|
-| Accepted OFF states | `off-grid`, `disconnected`, `off_grid`, `off` |
-| Not matched | `Off-Grid`, `OFF-GRID`, `offline`, `unavailable` |
-| Impact | Non-standard grid sensor values may not trigger outage detection |
-| Potential fix | Normalize to lowercase before matching, expand accepted states |
+| Accepted OFF states | `off-grid`, `off_grid`, `offgrid`, `off-grid mode: running`, `running: off-grid charging` |
+| Accepted ON states (#70) | `on-grid`, `on_grid`, `ongrid`, `on grid`, `grid connected` |
+| Everything else | UNKNOWN — no outage detected, and no restore authorized |
+| Impact | A sensor with a non-listed on-grid value keeps the system shed until the value is added (notification names the value) |
+| Deliberately excluded | A bare `on`/`off` — on a binary source these are as likely to mean the opposite |
+| Potential fix | Make the allow-lists configurable per installation |
 
 ---
 

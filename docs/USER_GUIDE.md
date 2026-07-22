@@ -56,7 +56,9 @@ If you use the [Huawei Solar](https://github.com/wlcrs/huawei_solar) HACS integr
 - `On-grid` — Normal operation, grid power available
 - `Off-grid` — Power outage detected → Battery Guard activates
 
-**Alternative grid detection:** The Wechselrichter also exposes a `Gerätestatus` sensor with the same On-grid/Off-grid values. Both work with Battery Guard.
+**Alternative grid detection:** The Wechselrichter also exposes a `Gerätestatus` (DEVICE_STATUS) sensor. Outage **detection** works with it — its off-grid values are recognized. **Automatic restore may not**: DEVICE_STATUS reports compound on-grid strings (e.g. `Grid connection: power limited`) that are not in the recognized on-grid list, so Battery Guard cannot positively confirm the grid is back. Prefer the dedicated `Netzunabhängigkeitsstatus` sensor.
+
+> ⚠️ **Check this before relying on automatic restore.** Open **Developer Tools → States**, look up your configured grid sensor, and confirm its normal value is one of the recognized on-grid values listed under [When is the grid considered "back"?](#when-is-the-grid-considered-back). If it is not, Battery Guard will shed during an outage but will not restore automatically — you would have to call `battery_guard.restore_all` by hand. This must be verified per installation; different Huawei firmware versions and language settings report different strings.
 
 **Voltage-based detection (optional):** If you have a Shelly 3EM at your main panel, you can enable voltage monitoring as a secondary detection method. Battery Guard then monitors all 3 phases and triggers when all drop below 50V.
 
@@ -107,6 +109,36 @@ Battery Guard automatically saves each device's state before taking any action. 
 - Switches are turned back on
 
 The first save wins: if a device is in both T1 and T2, the state saved during T1 is preserved.
+
+### When is the grid considered "back"?
+
+Battery Guard treats detection and restore asymmetrically — on purpose:
+
+- **Detecting an outage** requires a positive off-grid reading. If the grid sensor
+  becomes unavailable, Battery Guard does **not** assume an outage. A lost Modbus or
+  WiFi connection must never shed your devices.
+- **Restoring** requires a positive on-grid reading. "The sensor no longer says
+  off-grid" is not enough — a dead or unreadable sensor would otherwise look exactly
+  like a restored grid and switch every shed device back on in the middle of an outage.
+
+If the grid state cannot be confirmed, the restore is **suspended**: shed devices stay
+off and you get a notification naming the value that is blocking it (e.g.
+`unavailable`). As soon as a confirmed on-grid reading arrives, the normal restore runs
+automatically — including when the outage ended while Home Assistant was restarting.
+
+Recognized on-grid values are `on-grid`, `on_grid`, `ongrid`, `on grid` and
+`grid connected` (case-insensitive). With voltage monitoring, all three phases must
+read **at or above** 50 V; a mixed reading (one phase down) never authorizes a restore.
+
+**After a Home Assistant restart** the grid source is ignored for 3 minutes before the
+first check. The Modbus connection to the inverter needs about that long to reconnect,
+and acting on a stale value from that window could restore every shed device onto the
+battery.
+
+If a restore stays suspended even though power is genuinely back, call the
+`battery_guard.restore_all` service to restore manually — then check in
+**Developer Tools → States** what your grid sensor actually reports, and open an issue
+with that value so it can be added.
 
 ## Battery Optimization
 
@@ -190,6 +222,7 @@ Battery Guard sends notifications at key events:
 - 🔋 **Low battery** — Tier 2 actions executed
 - 🔋 **Battery recovered** — Tier 2 devices restored
 - ✅ **Grid power restored** — All devices restored
+- ⏸️ **Restore suspended** — Grid state could not be confirmed; devices stay shed
 - 🚨 **Critical battery** — Below critical SOC level
 - 🔌 **New unassigned devices** — New devices detected that need assignment
 
